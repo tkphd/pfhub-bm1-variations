@@ -71,6 +71,15 @@ c = CellVariable(mesh=mesh, name=r"$c$",   hasOld=True)
 κ = 2
 M = 5
 
+t = 0.0
+dt = 1e-5
+fin = 0.05
+
+# Write to disk every 1, 2, 5, 10, 20, 50, ...
+chkpts = [float(p * 10**q) \
+          for q in range(-2, ceil(log10(fin + 1.0e-6))) \
+          for p in (1, 2, 5)]
+
 ### Define equations of motion
 #
 # This is based on [fipy.examples.cahnHilliard.mesh2DCoupled],
@@ -133,9 +142,6 @@ if rank == 0:
 
     if not os.path.exists(iodir):
         os.mkdir(iodir)
-
-t = 0.0
-dt = 1e-5
 
 c0 = 0.5
 ϵ  = 0.01
@@ -201,12 +207,6 @@ update_energy(fcsv)
 rtol = 1e-3
 solver = Solver()
 
-# Write to disk every 1, 2, 5, 10, 20, 50, ...
-fin = 2.5
-chkpts = [float(p * 10**q) \
-          for q in range(-2, ceil(log10(fin))) \
-          for p in (1, 2, 5)]
-
 mprint("Writing a checkpoint at the following times:")
 mprint(chkpts)
 
@@ -237,6 +237,8 @@ def stepper(check):
             c.value = c.old
             μ.value = μ.old
 
+        gc.collect()
+
     dt = step.want
 
 @profile
@@ -250,6 +252,8 @@ def checkers():
                                                      check.end))
 
         stepper(check)
+
+        _ = check.succeeded()
 
         gc.collect()
 
