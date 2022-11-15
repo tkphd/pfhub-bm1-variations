@@ -12,30 +12,34 @@
 # [steppyngstounes]: https://github.com/usnistgov/steppyngstounes
 # [PFHub]: https://pages.nist.gov/pfhub/
 
-from memory_profiler import profile
+#### Warning!
+#
+# This code will consume up to 4 GB of RAM per step, which quickly accumulates. Proceed with caution!
 
 import gc
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import os
+import pandas
 import psutil
 import time
 
-from fipy import PeriodicGrid2D as Grid2D
+mpl.use("agg")
 
 from fipy import CellVariable
 from fipy import DiffusionTerm, ImplicitSourceTerm, TransientTerm
-from fipy import numerix, parallel
+from fipy import numerix, parallel, Viewer
+
+from fipy import PeriodicGrid2D as Grid2D
 
 from fipy.solvers.petsc import LinearLUSolver as Solver
 from fipy.solvers.petsc.comms import petscCommWrapper
 
 from math import ceil, log10
 
-from steppyngstounes import CheckpointStepper, PIDStepper
+from memory_profiler import profile
 
-try:
-    from rich import print
-except ImportError:
-    pass
+from steppyngstounes import CheckpointStepper, PIDStepper
 
 try:
     startTime = time.time_ns()
@@ -44,8 +48,9 @@ except AttributeError:
     startTime = time.time()
     time_has_ns = False
 
-cos = numerix.cos
-pi = numerix.pi
+cos  = numerix.cos
+pi   = numerix.pi
+
 proc = psutil.Process()
 
 comm = petscCommWrapper.PETScCommWrapper()
@@ -55,12 +60,13 @@ def mprint(*args, **kwargs):
     if rank == 0:
         print(*args, **kwargs)
 
+
 ### Prepare mesh & phase field
 
-Lx = Ly = 200
-dx = dy = 0.3125
+nx = ny = 200
+dx = dy = 0.3125  # 640×640
 
-mesh = Grid2D(nx=Lx, ny=Ly, dx=dx, dy=dy)
+mesh = Grid2D(nx=nx, ny=ny, dx=dx, dy=dy)
 x, y = mesh.cellCenters
 
 c = CellVariable(mesh=mesh, name=r"$c$",   hasOld=True)
@@ -80,8 +86,9 @@ fin = 0.05
 
 # Write to disk every 1, 2, 5, 10, 20, 50, ...
 chkpts = [float(p * 10**q) \
-          for q in range(-2, ceil(log10(fin + 1.0e-6))) \
+          for q in range(-3, ceil(log10(fin + 1.0e-6))) \
           for p in (1, 2, 5)]
+
 
 ### Define equations of motion
 #
@@ -100,22 +107,6 @@ chkpts = [float(p * 10**q) \
 # where the second term on $\mu$ is an `ImplicitSourceTerm` and the last is a `DiffusionTerm`.
 #
 # [fipy.examples.cahnHilliard.mesh2DCoupled]: https://www.ctcms.nist.gov/fipy/examples/cahnHilliard/generated/examples.cahnHilliard.mesh2DCoupled.html
-
-"""
-## Uncomment and run this cell to double-check the derivatives.
-
-import sympy.abc
-from sympy import Eq, diff, expand, factor, symbols
-fbulk = sympy.abc.rho * (sympy.abc.c - sympy.abc.alpha)**2 \
-                      * (sympy.abc.beta - sympy.abc.c)**2
-
-display(Eq(symbols("f"), fchem))
-display(Eq(symbols("f'"), factor(diff(fchem,
-                                      sympy.abc.c))))
-display(Eq(symbols("f''"), factor(expand(diff(fbulk,
-                                             sympy.abc.c,
-                                             sympy.abc.c)))))
-"""
 
 # The free energy density and its first two derivatives are (refactored after SymPy)
 #
@@ -138,16 +129,17 @@ eom_μ = ImplicitSourceTerm(coeff=1.0, var=μ) \
 
 eom = eom_c & eom_μ
 
+
 ### Initial Conditions -- As Specified
 
-if rank == 0:
-    iodir = "orig"
+iodir = "orig"
 
-    if not os.path.exists(iodir):
-        os.mkdir(iodir)
+if not os.path.exists(iodir):
+    os.mkdir(iodir)
 
 c0 = 0.5
-ϵ  = 0.01
+ϵ = 0.01
+
 
 def initialize(A, B):
     return c0 + ϵ * (
@@ -164,9 +156,11 @@ A0 = [0.105, 0.130, 0.025, 0.070]
 B0 = [0.110, 0.087,-0.150,-0.020]
 
 c.value = initialize(A0, B0)
+μ.value = d1fdc[:]
 
 c.updateOld()
 μ.updateOld()
+
 
 ### Prepare free energy output
 
@@ -186,6 +180,7 @@ if rank == 0:  # write the CSV header
 else:
     fcsv = None
 
+
 def update_energy(fh=None):
     # Integration of fields: CellVolumeAverage, .sum(),
     nrg = (fbulk - 0.5 * κ * numerix.dot(c.grad, c.grad)).sum()
@@ -202,6 +197,7 @@ def update_energy(fh=None):
         with open(fcsv, "a") as fh:
             fh.write("{},{},{},{},{},{}\n".format(*vals))
 
+
 update_energy(fcsv)
 
 
@@ -213,10 +209,16 @@ solver = Solver()
 mprint("Writing a checkpoint at the following times:")
 mprint(chkpts)
 
+viewer = Viewer(vars=(c,),
+                title="$t = 0$",
+                datamin=0., datamax=1.)
+
+
 @profile
 def stepper(check):
     global dt
     global t
+
     for step in PIDStepper(start=check.begin,
                            stop=check.end,
                            size=dt):
@@ -244,6 +246,10 @@ def stepper(check):
 
     dt = step.want
 
+    viewer.title=r"$t = %12g$" % t
+    viewer.plot()
+
+
 @profile
 def checkers():
     global dt
@@ -260,4 +266,19 @@ def checkers():
 
         gc.collect()
 
+
 checkers()
+
+df = pandas.read_csv("{}/energy.csv".format(iodir))
+
+plt.figure(1)
+plt.plot(df.time, df.free_energy)
+plt.xlabel("time $t$ / [a.u.]")
+plt.ylabel(r"Free energy $\mathcal{F}$ / [J/m³]")
+plt.savefig("{}/energy.png".format(iodir), bbox_inches="tight")
+
+plt.figure(2)
+plt.plot(df.time, df.mem_GB)
+plt.xlabel("time $t$ / [a.u.]")
+plt.ylabel("Memory / [GB]")
+plt.savefig("{}/memory.png".format(iodir), bbox_inches="tight")

@@ -4,7 +4,6 @@ all: orig
 .PHONY: all clean orig test watch
 
 orig: fipy-1a-orig.py
-	mkdir $@
 	mpirun -np 1 python3 -u $< | tee $@/profile.log
 
 mon:
