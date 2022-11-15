@@ -19,7 +19,7 @@ import os
 import psutil
 import time
 
-from fipy import Variable, CellVariable
+from fipy import CellVariable
 from fipy import DiffusionTerm, ImplicitSourceTerm, TransientTerm
 from fipy import numerix, parallel
 
@@ -42,6 +42,10 @@ proc = psutil.Process()
 
 comm = petscCommWrapper.PETScCommWrapper()
 rank = parallel.procID
+
+def mprint(*args, **kwargs):
+    if rank == 0:
+        print(*args, **kwargs)
 
 # ## Prepare mesh & phase field
 
@@ -117,13 +121,13 @@ eom = eom_c & eom_μ
 # ## Initial Conditions -- As Specified
 
 if rank == 0:
-    iodir = "1a.0"
+    iodir = "orig"
 
     if not os.path.exists(iodir):
         os.mkdir(iodir)
 
-t = Variable(0.0)
-dt = Variable(1e-5)
+t = 0.0
+dt = 1e-5
 
 c0 = 0.5
 ϵ  = 0.01
@@ -194,44 +198,45 @@ chkpts = [p * 10**q \
           for q in (-1, 0) \
           for p in (1, 2, 5)]
 
-print("Writing a checkpoint at the following times:")
-print(chkpts)
+mprint("Writing a checkpoint at the following times:")
+mprint(chkpts)
 
 # @profile
 
 def run():
     global dt
+    global t
     for check in CheckpointStepper(start=0.0,
                                    stops=chkpts,
                                    stop=chkpts[-1]):
-        if rank == 0:
-            print("Launching [{:12g} .. {:12g})".format(check.begin, check.end))
+        mprint("Launching [{:12g} .. {:12g})".format(check.begin, check.end))
 
         for step in PIDStepper(start=check.begin,
                                stop=check.end,
                                size=dt):
-            if rank == 0:
-                print("  Stepping [{:12g} .. {:12g}) / {:12g}".format(float(step.begin),
-                                                                            float(step.end),
-                                                                            float(step.size)))
+            mprint("  Stepping [{:12g} .. {:12g}) / {:12g}".format(float(step.begin),
+                                                                   float(step.end),
+                                                                   float(step.size)),
+                   end=" ")
 
             for sweep in range(2):
                 res = eom.sweep(dt=step.size, solver=solver)
 
             if step.succeeded(error=res/rtol):
-                dt.value = step.size
-                t.value += dt
+                mprint("✔")
+                dt = step.size
+                t += dt
                 c.updateOld()
                 μ.updateOld()
                 update_energy(fcsv)
             else:
-                print("        Failed.")
+                mprint("✘")
                 c.value = c.old
                 μ.value = μ.old
 
             gc.collect()
 
         if check.succeeded():
-            dt.value = step.want
+            dt = step.want
 
 run()
