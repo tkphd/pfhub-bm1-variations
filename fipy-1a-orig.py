@@ -57,7 +57,10 @@ def mprint(*args, **kwargs):
 
 ### Prepare mesh & phase field
 
-mesh = Grid2D(nx=200, ny=200, dx=0.375, dy=0.375)
+Lx = Ly = 200
+dx = dy = 0.3125
+
+mesh = Grid2D(nx=Lx, ny=Ly, dx=dx, dy=dy)
 x, y = mesh.cellCenters
 
 c = CellVariable(mesh=mesh, name=r"$c$",   hasOld=True)
