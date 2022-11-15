@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# # PFHub BM 1a in FiPy with Steppyngstounes
+## PFHub BM 1a in FiPy with Steppyngstounes
 #
 # This notebook implements [PFHub] Benchmark [1a][spinodal] using [FiPy] and [steppyngstounes].
 # It also explores alternative initial conditions that are more-periodic than the specification.
@@ -12,22 +12,30 @@
 # [steppyngstounes]: https://github.com/usnistgov/steppyngstounes
 # [PFHub]: https://pages.nist.gov/pfhub/
 
-# from memory_profiler import profile
+from memory_profiler import profile
 
 import gc
 import os
 import psutil
 import time
 
+from fipy import PeriodicGrid2D as Grid2D
+
 from fipy import CellVariable
 from fipy import DiffusionTerm, ImplicitSourceTerm, TransientTerm
 from fipy import numerix, parallel
 
-from fipy import Grid2D
 from fipy.solvers.petsc import LinearLUSolver as Solver
 from fipy.solvers.petsc.comms import petscCommWrapper
 
+from math import ceil, log10
+
 from steppyngstounes import CheckpointStepper, PIDStepper
+
+try:
+    from rich import print
+except ImportError:
+    pass
 
 try:
     startTime = time.time_ns()
@@ -47,7 +55,7 @@ def mprint(*args, **kwargs):
     if rank == 0:
         print(*args, **kwargs)
 
-# ## Prepare mesh & phase field
+### Prepare mesh & phase field
 
 mesh = Grid2D(nx=200, ny=200, dx=0.375, dy=0.375)
 x, y = mesh.cellCenters
@@ -55,7 +63,7 @@ x, y = mesh.cellCenters
 c = CellVariable(mesh=mesh, name=r"$c$",   hasOld=True)
 μ = CellVariable(mesh=mesh, name=r"$\mu$", hasOld=True)
 
-# ### Set thermo-kinetic constants from the BM1 specification
+#### Set thermo-kinetic constants from the BM1 specification
 
 α = 0.3
 β = 0.7
@@ -63,7 +71,7 @@ c = CellVariable(mesh=mesh, name=r"$c$",   hasOld=True)
 κ = 2
 M = 5
 
-# ## Define equations of motion
+### Define equations of motion
 #
 # This is based on [fipy.examples.cahnHilliard.mesh2DCoupled],
 # using a first-order Taylor series substitution in place of the bulk free energy "source term".
@@ -118,7 +126,7 @@ eom_μ = ImplicitSourceTerm(coeff=1.0, var=μ) \
 
 eom = eom_c & eom_μ
 
-# ## Initial Conditions -- As Specified
+### Initial Conditions -- As Specified
 
 if rank == 0:
     iodir = "orig"
@@ -151,7 +159,7 @@ c.value = initialize(A0, B0)
 c.updateOld()
 μ.updateOld()
 
-# ## Prepare free energy output
+### Prepare free energy output
 
 labs = [
     "wall_time",
@@ -188,55 +196,61 @@ def update_energy(fh=None):
 update_energy(fcsv)
 
 
-# ## Timestepping
+### Timestepping
 
 rtol = 1e-3
 solver = Solver()
 
 # Write to disk every 1, 2, 5, 10, 20, 50, ...
-chkpts = [p * 10**q \
-          for q in (-1, 0) \
+fin = 2.5
+chkpts = [float(p * 10**q) \
+          for q in range(-2, ceil(log10(fin))) \
           for p in (1, 2, 5)]
 
 mprint("Writing a checkpoint at the following times:")
 mprint(chkpts)
 
-# @profile
+@profile
+def stepper(check):
+    global dt
+    global t
+    for step in PIDStepper(start=check.begin,
+                           stop=check.end,
+                           size=dt):
+        mprint("    Stepping [{:12g} .. {:12g}) / {:12g}".format(float(step.begin),
+                                                                 float(step.end),
+                                                                 float(step.size)),
+               end=" ")
 
-def run():
+        for sweep in range(2):
+            res = eom.sweep(dt=step.size, solver=solver)
+
+        if step.succeeded(error=res/rtol):
+            mprint("✔")
+            dt = step.size
+            t += dt
+            c.updateOld()
+            μ.updateOld()
+            update_energy(fcsv)
+        else:
+            mprint("✘")
+            c.value = c.old
+            μ.value = μ.old
+
+    dt = step.want
+
+@profile
+def checkers():
     global dt
     global t
     for check in CheckpointStepper(start=0.0,
                                    stops=chkpts,
-                                   stop=chkpts[-1]):
-        mprint("Launching [{:12g} .. {:12g})".format(check.begin, check.end))
+                                   stop=fin):
+        mprint("Launching [{:12g} .. {:12g})".format(check.begin,
+                                                     check.end))
 
-        for step in PIDStepper(start=check.begin,
-                               stop=check.end,
-                               size=dt):
-            mprint("  Stepping [{:12g} .. {:12g}) / {:12g}".format(float(step.begin),
-                                                                   float(step.end),
-                                                                   float(step.size)),
-                   end=" ")
+        stepper(check)
 
-            for sweep in range(2):
-                res = eom.sweep(dt=step.size, solver=solver)
+        gc.collect()
 
-            if step.succeeded(error=res/rtol):
-                mprint("✔")
-                dt = step.size
-                t += dt
-                c.updateOld()
-                μ.updateOld()
-                update_energy(fcsv)
-            else:
-                mprint("✘")
-                c.value = c.old
-                μ.value = μ.old
-
-            gc.collect()
-
-        if check.succeeded():
-            dt = step.want
-
-run()
+checkers()
