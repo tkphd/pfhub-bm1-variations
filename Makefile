@@ -1,9 +1,13 @@
 # Makefile for PFHub BM 1 variations
 
+FIPYLOG = $(HOME)/repositories/fipy/fipy/tools/logging
+
 all: orig
 .PHONY: all clean orig test watch
 
 orig: fipy-1a-orig.py
+	$$(mkdir -p orig)
+	FIPY_LOG_CONFIG=$(FIPYLOG)/scattered_config.json \
 	mpirun -np 1 python3 -u $< | tee $@/profile.log
 
 mon:
