@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/Usr/bin/env python
 # coding: utf-8
 
 ## PFHub BM 1a in FiPy with Steppyngstounes
@@ -12,19 +12,19 @@
 # [steppyngstounes]: https://github.com/usnistgov/steppyngstounes
 # [PFHub]: https://pages.nist.gov/pfhub/
 
-#### Warning!
-#
-# This code will consume up to 4 GB of RAM per step, which quickly accumulates. Proceed with caution!
+import time
+startTime = time.time()
+
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=SyntaxWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
 
 import gc
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import os
-import pandas
 import psutil
-import time
-
-mpl.use("agg")
 
 from fipy import CellVariable
 from fipy import DiffusionTerm, ImplicitSourceTerm, TransientTerm
@@ -35,18 +35,33 @@ from fipy import PeriodicGrid2D as Grid2D
 from fipy.solvers.petsc import LinearLUSolver as Solver
 from fipy.solvers.petsc.comms import petscCommWrapper
 
-from math import ceil, log10
+from math import log10
 
-from memory_profiler import profile
+from petsc4py import PETSc
+
+try:
+    from rich import print
+except ImportError:
+    pass
 
 from steppyngstounes import CheckpointStepper, PIDStepper
 
-try:
-    startTime = time.time_ns()
-    time_has_ns = True
-except AttributeError:
-    startTime = time.time()
-    time_has_ns = False
+from argparse import ArgumentParser
+
+parser = ArgumentParser(
+    prog = 'fipy-bm1-variations',
+    description = 'PFHub BM1 in FiPy with periodic initial condition variations'
+)
+
+parser.add_argument("variant", help="one of 'orig', 'peri', or 'zany'")
+args = parser.parse_args()
+
+def mprint(*args, **kwargs):
+    if rank == 0:
+        print(*args, **kwargs)
+
+
+mpl.use("agg")
 
 cos  = numerix.cos
 pi   = numerix.pi
@@ -55,16 +70,18 @@ proc = psutil.Process()
 
 comm = petscCommWrapper.PETScCommWrapper()
 rank = parallel.procID
-
-def mprint(*args, **kwargs):
-    if rank == 0:
-        print(*args, **kwargs)
-
+# cpus = parallel.Nproc
 
 ### Prepare mesh & phase field
 
-nx = ny = 200
+Lx = Ly = 200
+
+# The interface width 𝑙=4.47 units, so 10 points through the interface means dx~0.5?
 dx = dy = 0.3125  # 640×640
+# dx = dy = 0.2  # 1000×1000
+
+nx = int(Lx / dx)
+ny = int(Ly / dy)
 
 mesh = Grid2D(nx=nx, ny=ny, dx=dx, dy=dy)
 x, y = mesh.cellCenters
@@ -76,19 +93,25 @@ c = CellVariable(mesh=mesh, name=r"$c$",   hasOld=True)
 
 α = 0.3
 β = 0.7
-ρ = 5
-κ = 2
-M = 5
+ρ = 5.0
+κ = 2.0
+M = 5.0
+ζ = 0.5  # mean composition
+ϵ = 0.01 # noise amplitude
 
 t = 0.0
-dt = 1e-5
-fin = 0.05
+dt = 1e-6
 
-# Write to disk every 1, 2, 5, 10, 20, 50, ...
-chkpts = [float(p * 10**q) \
-          for q in range(-3, ceil(log10(fin + 1.0e-6))) \
-          for p in (1, 2, 5)]
+fin = 1500000
+fin10 = log10(fin)
 
+# Write to disk uniformly in logarithmic space
+chkpts = [
+    int(float(10**q)) for q in
+    numerix.arange(0, fin10, 0.005)
+]
+if chkpts[-1] < fin:
+    chkpts.append(fin)
 
 ### Define equations of motion
 #
@@ -132,17 +155,14 @@ eom = eom_c & eom_μ
 
 ### Initial Conditions -- As Specified
 
-iodir = "orig"
+iodir = args.variant
 
 if not os.path.exists(iodir):
     os.mkdir(iodir)
 
-c0 = 0.5
-ϵ = 0.01
-
 
 def initialize(A, B):
-    return c0 + ϵ * (
+    return ζ + ϵ * (
            cos(A[0] * x) * cos(B[0] * y) \
         + (cos(A[1] * x) * cos(B[1] * y))**2 \
         +  cos(A[2] * x  +     B[2] * y) \
@@ -150,12 +170,16 @@ def initialize(A, B):
     )
 
 
-# BM 1a specification: not periodic at all
+if args.variant == "orig":
+    # BM 1a specification: not periodic at all
+    c.value = initialize(
+        (0.105, 0.130, 0.025, 0.070),
+        (0.110, 0.087,-0.150,-0.020)
+    )
+else:
+    raise ValueError("No such condition: {}".format(args["variant"]))
 
-A0 = [0.105, 0.130, 0.025, 0.070]
-B0 = [0.110, 0.087,-0.150,-0.020]
 
-c.value = initialize(A0, B0)
 μ.value = d1fdc[:]
 
 c.updateOld()
@@ -187,10 +211,7 @@ def update_energy(fh=None):
     mas = c.sum()
     mem = comm.allgather(proc.memory_info().rss) / 1024**3
     if rank == 0:
-        if time_has_ns:
-            timer = 1e-9 * (time.time_ns() - startTime)
-        else:
-            timer = time.time() - startTime
+        timer = time.time() - startTime
 
         vals = [timer, t, nrg, mem, dt, mas]
 
@@ -205,16 +226,26 @@ update_energy(fcsv)
 
 rtol = 1e-3
 solver = Solver()
+viewer = Viewer(vars=(c,), title="$t = 0$")
 
-mprint("Writing a checkpoint at the following times:")
-mprint(chkpts)
+def write_plot():
+    imgname = "%s/spinodal.%08d.png" % (iodir, int(t))
+    if rank == 0 and not os.path.exists(imgname):
+        viewer.title = r"$t = %12g$" % t
+        viewer.datamin = float(c.min())
+        viewer.datamax = float(c.max())
+        # cb_ticks = viewer.colorbar.get_ticks().tolist()
+        # cb_ticks[0] = round(float(c.min()), 4)
+        # cb_ticks.append(round(float(c.max()), 4))
+        # viewer.colorbar.set_ticks(cb_ticks)
+        viewer.plot(filename=imgname)
 
-viewer = Viewer(vars=(c,),
-                title="$t = 0$",
-                datamin=0., datamax=1.)
 
+# mprint("Writing a checkpoint at the following times:")
+# mprint(chkpts)
 
-@profile
+write_plot()
+
 def stepper(check):
     global dt
     global t
@@ -242,15 +273,13 @@ def stepper(check):
             c.value = c.old
             μ.value = μ.old
 
-        gc.collect()
+        PETSc.garbage_cleanup()
 
     dt = step.want
 
-    viewer.title=r"$t = %12g$" % t
-    viewer.plot()
+    write_plot()
 
 
-@profile
 def checkers():
     global dt
     global t
@@ -268,17 +297,9 @@ def checkers():
 
 
 checkers()
+plt.close()
 
-df = pandas.read_csv("{}/energy.csv".format(iodir))
-
-plt.figure(1)
-plt.plot(df.time, df.free_energy)
-plt.xlabel("time $t$ / [a.u.]")
-plt.ylabel(r"Free energy $\mathcal{F}$ / [J/m³]")
-plt.savefig("{}/energy.png".format(iodir), bbox_inches="tight")
-
-plt.figure(2)
-plt.plot(df.time, df.mem_GB)
-plt.xlabel("time $t$ / [a.u.]")
-plt.ylabel("Memory / [GB]")
-plt.savefig("{}/memory.png".format(iodir), bbox_inches="tight")
+# === Plot Variables ===
+if rank == 0:
+    from plot_energy import read_and_plot
+    read_and_plot(iodir)
