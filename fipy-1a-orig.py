@@ -35,8 +35,6 @@ from fipy import PeriodicGrid2D as Grid2D
 from fipy.solvers.petsc import LinearLUSolver as Solver
 from fipy.solvers.petsc.comms import petscCommWrapper
 
-from math import log10
-
 from petsc4py import PETSc
 
 try:
@@ -63,8 +61,10 @@ def mprint(*args, **kwargs):
 
 mpl.use("agg")
 
+ceil = numerix.ceil
 cos  = numerix.cos
 pi   = numerix.pi
+log10= numerix.log10
 
 proc = psutil.Process()
 
@@ -75,10 +75,7 @@ rank = parallel.procID
 ### Prepare mesh & phase field
 
 Lx = Ly = 200
-
-# The interface width 𝑙=4.47 units, so 10 points through the interface means dx~0.5?
-dx = dy = 0.3125  # 640×640
-# dx = dy = 0.2  # 1000×1000
+dx = dy = 1.0  # 200×200
 
 nx = int(Lx / dx)
 ny = int(Ly / dy)
@@ -100,7 +97,7 @@ M = 5.0
 ϵ = 0.01 # noise amplitude
 
 t = 0.0
-dt = 1e-6
+dt = 1e-5
 
 fin = 1500000
 fin10 = log10(fin)
@@ -112,6 +109,7 @@ chkpts = [
 ]
 if chkpts[-1] < fin:
     chkpts.append(fin)
+chkpts = numerix.unique(chkpts)
 
 ### Define equations of motion
 #
@@ -172,14 +170,22 @@ def initialize(A, B):
 
 if args.variant == "orig":
     # BM 1a specification: not periodic at all
-    c.value = initialize(
-        (0.105, 0.130, 0.025, 0.070),
-        (0.110, 0.087,-0.150,-0.020)
-    )
+    A0 = numerix.array([0.105, 0.130, 0.025, 0.070])
+    B0 = numerix.array([0.110, 0.087,-0.150,-0.020])
+elif args.variant == "peri":
+    # Even integers as close to spec as achievable:
+    # exactly periodic at the domain boundaries
+    A0 = pi/Lx * numerix.array([6.0, 8.0, 2.0, 4.0])
+    B0 = pi/Ly * numerix.array([8.0, 6.0,-10.,-2.0])
+elif args.variant == "zany":
+    # Perturbation of the periodic coefficients:
+    # almost periodic, visually similar to the original
+    A0 = pi/Lx * numerix.array([6.125, 7.875, 2.125, 4.125])
+    B0 = pi/Ly * numerix.array([7.875, 5.125,-9.875,-1.875])
 else:
-    raise ValueError("No such condition: {}".format(args["variant"]))
+    raise ValueError("Variant {} undefined.".format(args.variant))
 
-
+c.value = initialize(A0, B0)
 μ.value = d1fdc[:]
 
 c.updateOld()
