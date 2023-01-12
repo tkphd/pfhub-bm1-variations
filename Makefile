@@ -4,7 +4,7 @@ FIPYLOG = $(HOME)/repositories/fipy/fipy/tools/logging
 NPROC = 4
 
 all: orig
-.PHONY: all clean orig prof test watch
+.PHONY: all clean orig peri zany prof test watch
 
 prof: fipy-1a-orig.py
 	$$(mkdir -p $@)
@@ -14,7 +14,17 @@ prof: fipy-1a-orig.py
 # mpirun -np $(NPROC)
 
 orig: fipy-1a-orig.py
-	$$(mkdir -p $@; rm $@/*)
+	$$(mkdir -p $@; rm -vf $@/*)
+	OMP_NUM_THREADS=1 \
+	python3 -u $< $@ | tee $@/profile.log
+
+peri: fipy-1a-orig.py
+	$$(mkdir -p $@; rm -vf $@/*)
+	OMP_NUM_THREADS=1 \
+	python3 -u $< $@ | tee $@/profile.log
+
+zany: fipy-1a-orig.py
+	$$(mkdir -p $@; rm -vf $@/*)
 	OMP_NUM_THREADS=1 \
 	python3 -u $< $@ | tee $@/profile.log
 
