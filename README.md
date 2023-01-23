@@ -11,3 +11,11 @@ initial condition.
   simple periodic pattern formation
 
 The coefficients are explored in `initial_conditions.py`.
+
+## PyMKS
+
+Consider using the [PyMKS Cahn-Hilliard example][pymks] to get a sense
+for the spectral solver's performance?
+
+<!-- links -->
+[pymks]: https://pymks.readthedocs.io/en/stable/rst/notebooks/cahn_hilliard.html

@@ -1,6 +1,10 @@
 #!/Usr/bin/env python
 # coding: utf-8
 
+# Endpoint detection: volume-weighted time rate of change of the free energy
+# (per <https://doi.org/10.1016/j.commatsci.2016.09.022>)
+# (dF/dt) / V < 1e-14
+
 ## PFHub BM 1a in FiPy with Steppyngstounes
 #
 # This notebook implements [PFHub] Benchmark [1a][spinodal] using [FiPy] and [steppyngstounes].
@@ -70,7 +74,6 @@ proc = psutil.Process()
 
 comm = petscCommWrapper.PETScCommWrapper()
 rank = parallel.procID
-# cpus = parallel.Nproc
 
 ### Prepare mesh & phase field
 
@@ -213,7 +216,7 @@ else:
 
 def update_energy(fh=None):
     # Integration of fields: CellVolumeAverage, .sum(),
-    nrg = (fbulk - 0.5 * κ * numerix.dot(c.grad, c.grad)).sum()
+    nrg = (fbulk + 0.5 * κ * numerix.dot(c.grad, c.grad)).sum()
     mas = c.sum()
     mem = comm.allgather(proc.memory_info().rss) / 1024**3
     if rank == 0:
