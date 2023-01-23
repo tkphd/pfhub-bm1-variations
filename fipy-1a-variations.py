@@ -1,4 +1,4 @@
-#!/Usr/bin/env python
+#!/usr/bin/python3
 # coding: utf-8
 
 # Endpoint detection: volume-weighted time rate of change of the free energy
@@ -26,9 +26,11 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 import gc
 import matplotlib as mpl
-import matplotlib.pyplot as plt
 import os
+import pandas as pd
 import psutil
+
+from argparse import ArgumentParser
 
 from fipy import CellVariable
 from fipy import DiffusionTerm, ImplicitSourceTerm, TransientTerm
@@ -48,7 +50,13 @@ except ImportError:
 
 from steppyngstounes import CheckpointStepper, PIDStepper
 
-from argparse import ArgumentParser
+from tqdm import tqdm
+
+
+def mprint(*args, **kwargs):
+    if rank == 0:
+        print(*args, **kwargs)
+
 
 parser = ArgumentParser(
     prog = 'fipy-bm1-variations',
@@ -58,10 +66,10 @@ parser = ArgumentParser(
 parser.add_argument("variant", help="one of 'orig', 'peri', or 'zany'")
 args = parser.parse_args()
 
-def mprint(*args, **kwargs):
-    if rank == 0:
-        print(*args, **kwargs)
+iodir = args.variant
 
+if not os.path.exists(iodir):
+    os.mkdir(iodir)
 
 mpl.use("agg")
 
@@ -102,16 +110,14 @@ M = 5.0
 t = 0.0
 dt = 1e-5
 
-fin = 1500000
-fin10 = log10(fin)
+t_fin = 20_000_000
+fin10 = log10(t_fin)
 
 # Write to disk uniformly in logarithmic space
 chkpts = [
     int(float(10**q)) for q in
-    numerix.arange(0, fin10, 0.005)
+    numerix.arange(0, fin10, 0.04)
 ]
-if chkpts[-1] < fin:
-    chkpts.append(fin)
 chkpts = numerix.unique(chkpts)
 
 ### Define equations of motion
@@ -147,19 +153,11 @@ d2fdc = 2 * ρ * (α**2 + 4*α*β + β**2 - 6 * c * (α - c + β))
 eom_c = TransientTerm(var=c) == DiffusionTerm(coeff=M, var=μ)
 
 eom_μ = ImplicitSourceTerm(coeff=1.0, var=μ) \
-     == (d1fdc - d2fdc * c) \
+      == d1fdc - d2fdc * c \
       + ImplicitSourceTerm(coeff=d2fdc, var=c) \
       - DiffusionTerm(coeff=κ, var=c)
 
 eom = eom_c & eom_μ
-
-
-### Initial Conditions -- As Specified
-
-iodir = args.variant
-
-if not os.path.exists(iodir):
-    os.mkdir(iodir)
 
 
 def initialize(A, B):
@@ -206,34 +204,51 @@ labs = [
     "mass"
 ]
 
-if rank == 0:  # write the CSV header
-    fcsv = "{}/energy.csv".format(iodir)
-    with open(fcsv, "w") as fh:
-        fh.write("{},{},{},{},{},{}\n".format(*labs))
-else:
-    fcsv = None
+fcsv = "{}/energy.csv".format(iodir) if rank == 0 else None
+nrg_df = None
 
 
-def update_energy(fh=None):
+def write_energy(fcsv=None, df=None):
+    if rank == 0 and df is not None and fcsv is not None:
+        df.to_csv(fcsv, index=False)
+
+
+def update_energy(df=None):
     # Integration of fields: CellVolumeAverage, .sum(),
-    nrg = (fbulk + 0.5 * κ * numerix.dot(c.grad, c.grad)).sum()
+    nrg = (fbulk + 0.5 * κ * numerix.absolute(c.grad)**2).sum()
     mas = c.sum()
     mem = comm.allgather(proc.memory_info().rss) / 1024**3
     if rank == 0:
         timer = time.time() - startTime
+        vals = (timer, t, nrg, mem, dt, mas)
+        index = [0] if (df is None) else [len(df)]
 
-        vals = [timer, t, nrg, mem, dt, mas]
+        update = pd.DataFrame([vals], columns=labs, index=index)
 
-        with open(fcsv, "a") as fh:
-            fh.write("{},{},{},{},{},{}\n".format(*vals))
+        if df is None:
+            return update
+
+        return pd.concat([df, update])
+
+    return None
 
 
-update_energy(fcsv)
+def energy_rate(df=None):
+    if df is not None:
+        delF = (df["free_energy"].iloc[-1] - df["free_energy"].iloc[-2])
+        delT = (df["time"].iloc[-1] - df["time"].iloc[-2])
+        inV = 1 / (Lx * Ly)
 
+        return inV * (delF / delT )
+
+    return None
+
+
+nrg_df = update_energy(nrg_df)
 
 ### Timestepping
 
-rtol = 1e-3
+rtol = 1e-4
 solver = Solver()
 viewer = Viewer(vars=(c,), title="$t = 0$")
 
@@ -243,42 +258,40 @@ def write_plot():
         viewer.title = r"$t = %12g$" % t
         viewer.datamin = float(c.min())
         viewer.datamax = float(c.max())
-        # cb_ticks = viewer.colorbar.get_ticks().tolist()
-        # cb_ticks[0] = round(float(c.min()), 4)
-        # cb_ticks.append(round(float(c.max()), 4))
-        # viewer.colorbar.set_ticks(cb_ticks)
         viewer.plot(filename=imgname)
 
-
-# mprint("Writing a checkpoint at the following times:")
-# mprint(chkpts)
 
 write_plot()
 
 def stepper(check):
     global dt
     global t
+    global nrg_df
 
-    for step in PIDStepper(start=check.begin,
-                           stop=check.end,
-                           size=dt):
-        mprint("    Stepping [{:12g} .. {:12g}) / {:12g}".format(float(step.begin),
-                                                                 float(step.end),
-                                                                 float(step.size)),
-               end=" ")
+    label = "    Stepping [{:10g} .. {:10g}) / {:10g}".format(
+        float(check.begin),
+        float(check.end),
+        float(check.size)
+    )
 
-        for sweep in range(2):
+    for step in tqdm(PIDStepper(start=check.begin,
+                                stop=check.end,
+                                size=dt),
+                     desc=label):
+        res = 1.0
+        swp = 0
+
+        while swp < 5 and res > rtol:
             res = eom.sweep(dt=step.size, solver=solver)
+            swp += 1
 
         if step.succeeded(error=res/rtol):
-            mprint("✔")
             dt = step.size
             t += dt
             c.updateOld()
             μ.updateOld()
-            update_energy(fcsv)
+            nrg_df = update_energy(nrg_df)
         else:
-            mprint("✘")
             c.value = c.old
             μ.value = μ.old
 
@@ -286,27 +299,28 @@ def stepper(check):
 
     dt = step.want
 
-    write_plot()
-
 
 def checkers():
-    global dt
-    global t
     for check in CheckpointStepper(start=0.0,
                                    stops=chkpts,
-                                   stop=fin):
-        mprint("Launching [{:12g} .. {:12g})".format(check.begin,
-                                                     check.end))
-
+                                   stop=t_fin):
         stepper(check)
-
         _ = check.succeeded()
+
+        write_plot()
+        write_energy(fcsv, nrg_df)
+        dF_dt = energy_rate(nrg_df)
 
         gc.collect()
 
+        # Endpoint detection: volume-weighted time rate of change of
+        # the free energy, per <https://doi.org/10.1016/j.commatsci.2016.09.022>
+        if dF_dt is not None and dF_dt < 1e-14:
+            break
+
+# === Evolve the Equations of Motion ===
 
 checkers()
-plt.close()
 
 # === Plot Variables ===
 if rank == 0:
