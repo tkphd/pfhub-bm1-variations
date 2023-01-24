@@ -1,37 +1,19 @@
 # Makefile for PFHub BM 1 variations
+# with periodic grids and serial solvers
 
-FIPYLOG = $(HOME)/repositories/fipy/fipy/tools/logging
-NPROC = 4
-
-all: orig
-.PHONY: all clean orig peri zany prof test watch
-
-prof: fipy-1a-variations.py
-	$$(mkdir -p $@)
-	OMP_NUM_THREADS=1 \
-	FIPY_LOG_CONFIG=$(FIPYLOG)/scattered_config.json \
-	python3 -u $< orig | tee $@/profile.log
+.PHONY: clean mon orig peri zany
 
 orig: fipy-1a-variations.py
-	OMP_NUM_THREADS=1 \
-	python3 -u $< $@ | tee $@/profile.log
+	OMP_NUM_THREADS=1 python3 $< $@
 
 peri: fipy-1a-variations.py
-	OMP_NUM_THREADS=1 \
-	python3 -u $< $@ | tee $@/profile.log
+	OMP_NUM_THREADS=1 python3 $< $@
 
 zany: fipy-1a-variations.py
-	OMP_NUM_THREADS=1 \
-	python3 -u $< $@ | tee $@/profile.log
+	OMP_NUM_THREADS=1 python3 $< $@
 
 mon:
-	watch 'xsv table orig/energy.csv | head -n 20; echo; echo "..."; echo; xsv table orig/energy.csv | tail -n 20'
-
-test: fipy-1a-variations.py
-	$$(mkdir -p $@)
-	OMP_NUM_THREADS=1 \
-	FIPY_LOG_CONFIG=$(FIPYLOG)/scattered_config.json \
-	mprof run $< orig | tee $@/profile.log
+	watch -n 10 "zcat orig/energy.csv.gz | xsv table | head -n 15; echo '...'; zcat orig/energy.csv.gz | xsv table | tail -n 15"
 
 clean:
-	rm -r orig
+	rm -r orig/* peri/* zany/*
