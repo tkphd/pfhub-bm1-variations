@@ -13,7 +13,7 @@ zany: fipy-1a-variations.py
 	OMP_NUM_THREADS=1 python3 $< $@
 
 mon:
-	watch -n 10 "zcat orig/energy.csv.gz | xsv table | head -n 15; echo '...'; zcat orig/energy.csv.gz | xsv table | tail -n 15"
+	watch -n 10 "xsv table orig/energy.csv | head -n 15; echo '...'; xsv table orig/energy.csv | tail -n 15"
 
 clean:
 	rm -r orig/* peri/* zany/*

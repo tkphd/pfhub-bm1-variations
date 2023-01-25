@@ -103,16 +103,14 @@ def load_restart(fnpz=None):
 def fbulk(C):
     return ρ * (C - α)**2 * (β - C)**2
 
-def energy_rate():
-    V = Lx * Ly
-    F_new = float(fbulk(c).sum())
-    F_old = float(fbulk(c.old).sum())
-    delFv_delt = float(F_new - F_old) / (V * dt)
-
-    if numerix.isclose(0.0, delFv_delt):
+def energy_rate(df=None):
+    if df is None or len(df) < 2:
         return 1.0
+    V = Lx * Ly
+    delF = float(df.free_energy.iloc[-1] - df.free_energy.iloc[-2])
+    delt = float(df.time.iloc[-1] - df.time.iloc[-2])
 
-    return delFv_delt
+    return -delF / (V * delt)
 
 def mprint(*args, **kwargs):
     if rank == 0:
@@ -121,11 +119,11 @@ def mprint(*args, **kwargs):
 def update_energy(df=None):
     firstRow = (df is None)
     # Integration of fields
-    nrg = fbulk(c)
+    nrg = float((fbulk(c) + 0.5 * κ * (c.grad.mag)**2).sum())
     mas = c.sum()
     mem = parallel.allgather(proc.memory_info().rss) / 1024**2
     if rankIsHead:
-        dFv_dt = float(energy_rate())
+        dFv_dt = float(energy_rate(df))
         timer = time.time() - startTime
         vals = (timer, t, nrg, mem, dt, mas, dFv_dt)
         index = [0] if firstRow else [len(df)]
@@ -306,7 +304,7 @@ def stepper(check):
         PETSc.garbage_cleanup()
 
     dt = step.want
-    return parallel.bcast(None if not rankIsHead else nrg_df.energy_rate.iloc[-1])
+    return parallel.bcast(nrg_df.energy_rate.iloc[-1])
 
 def checkers():
     for check in CheckpointStepper(start=0.0,
