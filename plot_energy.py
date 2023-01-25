@@ -39,8 +39,8 @@ def read_and_plot(iodir):
 
         plt.figure(2, figsize=figsize)
         plt.xlabel(r"time $t$ / [a.u.]")
-        plt.ylabel("Memory / [GB]")
-        plt.loglog(df.time, df.mem_GB)
+        plt.ylabel("Memory / [MB]")
+        plt.loglog(df.time, df.mem_MB)
         plt.savefig("{}/memory.png".format(iodir), bbox_inches="tight", dpi=dpi)
         plt.close()
 
