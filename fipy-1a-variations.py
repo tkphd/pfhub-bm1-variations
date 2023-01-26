@@ -37,7 +37,7 @@ from fipy import DiffusionTerm, ImplicitSourceTerm, TransientTerm
 from fipy import numerix, parallel, Viewer
 from fipy import PeriodicGrid2D as Grid2D
 
-from fipy.solvers.petsc import LinearBicgSolver as Solver
+from fipy.solvers.petsc import LinearGMRESSolver as Solver
 from petsc4py import PETSc
 
 try:
@@ -92,13 +92,39 @@ x, y = mesh.cellCenters
 c = CellVariable(mesh=mesh, name=r"$c$",   hasOld=True)
 μ = CellVariable(mesh=mesh, name=r"$\mu$", hasOld=True)
 
+### Prepare free energy output
+
+columns = [
+    "wall_time",
+    "time",
+    "free_energy",
+    "mem_MB",
+    "timestep",
+    "mass",
+    "energy_rate"
+]
+
+fcsv = "{}/energy.csv".format(iodir) if rankIsHead else None
+fnpz = "{}/checkpoint.npz".format(iodir) if rankIsHead else None
+
+restartFromCheckpoint = os.path.exists(fnpz)
+
 # === Utility Functions ===
 
 def dump_restart(fnpz=None):
-    numerix.savez_compressed(fnpz, c=c.value, u=μ.value, c_old=c.old, u_old=μ.old, t=t, dt=dt)
+    numerix.savez_compressed(fnpz, c=c.value, u=μ.value, t=t, dt=dt)
 
 def load_restart(fnpz=None):
-    c.value, μ.value, c.old, μ.old, t, dt = numerix.loadz(fnpz)
+    global t
+    # global dt
+    global c
+    global μ
+
+    with numerix.load(fnpz) as data:
+        c.value[:] = data["c"]
+        μ.value[:] = data["u"]
+        t = data["t"]
+        # dt = data["dt"]
 
 def fbulk(C):
     return ρ * (C - α)**2 * (β - C)**2
@@ -108,9 +134,8 @@ def energy_rate(df=None):
         return 1.0
     V = Lx * Ly
     delF = float(df.free_energy.iloc[-1] - df.free_energy.iloc[-2])
-    delt = float(df.time.iloc[-1] - df.time.iloc[-2])
 
-    return -delF / (V * delt)
+    return -delF / (V * dt)
 
 def mprint(*args, **kwargs):
     if rank == 0:
@@ -161,18 +186,19 @@ M = 5.0
 
 t = 0.0
 dt = 1e-5
+rtol = 1e-3
 
-t_fin = 20_000_000
-fin10 = log10(t_fin)
-
-f_fin = 1e-14  # final rate of free energy evolution
+t_fin = 20_000_000  # nothing should take this long
+t_min = 100_000     # nothing should end before this
+f_fin = 1e-16  # final rate of free energy evolution
 
 # Write to disk uniformly in logarithmic space
-chkpts = [
-    int(float(10**q)) for q in
-    numerix.arange(0, fin10, 0.04)
-]
-chkpts = numerix.unique(chkpts)
+checkpoints = numerix.unique(
+    [
+        int(float(10**q)) for q in
+        numerix.arange(0, log10(t_fin), 0.1)
+    ]
+)
 
 ### Define equations of motion
 #
@@ -205,13 +231,14 @@ d2fdc = 2 * ρ * (α**2 + 4*α*β + β**2 - 6 * c * (α - c + β))
 
 eom_c = TransientTerm(var=c) == DiffusionTerm(coeff=M, var=μ)
 
-eom_μ = ImplicitSourceTerm(coeff=1.0, var=μ) \
-      == d1fdc - d2fdc * c \
-      + ImplicitSourceTerm(coeff=d2fdc, var=c) \
-      - DiffusionTerm(coeff=κ, var=c)
+eom_μ =  ImplicitSourceTerm(coeff=1.0, var=μ) \
+      == ImplicitSourceTerm(coeff=d2fdc, var=c) \
+      +  d1fdc - d2fdc * c \
+      -  DiffusionTerm(coeff=κ, var=c)
 
 eom = eom_c & eom_μ
 
+# Define initial conditions
 
 def initialize(A, B):
     return ζ + ϵ * (
@@ -239,34 +266,30 @@ elif args.variant == "zany":
 else:
     raise ValueError("Variant {} undefined.".format(args.variant))
 
-c.value = initialize(A0, B0)
-μ.value = d1fdc[:]
+# Initialize or reload field variables
+
+if restartFromCheckpoint:
+    mprint("Resuming simulation from {}".format(fnpz))
+
+    load_restart(fnpz)
+
+    # drop checkpoints we've already passed
+    checkpoints = checkpoints[t < checkpoints]
+
+    nrg_df = pd.read_csv(fcsv)
+else:
+    c.value = initialize(A0, B0)
+    μ.value = d1fdc[:]
+
+    nrg_df = update_energy()
 
 c.updateOld()
 μ.updateOld()
 
 
-### Prepare free energy output
+# === Evolve the Equations of Motion ===
 
-columns = [
-    "wall_time",
-    "time",
-    "free_energy",
-    "mem_MB",
-    "timestep",
-    "mass",
-    "energy_rate"
-]
-
-fcsv = "{}/energy.csv".format(iodir) if rankIsHead else None
-fnpz = "{}/checkpoint.npz".format(iodir) if rankIsHead else None
-
-nrg_df = update_energy()
-
-### Timestepping
-
-rtol = 1e-3
-viewer = Viewer(vars=(c,), title="$t = 0$")
+viewer = Viewer(vars=(c,))
 solver = Solver()
 
 write_plot()
@@ -277,17 +300,18 @@ def stepper(check):
     global nrg_df
 
     progress_bar = tqdm(PIDStepper(start=check.begin,
-                                stop=check.end,
-                                size=dt))
+                                   stop=check.end,
+                                   size=dt,
+                                   limiting=True))
 
     for step in progress_bar:
         res = 1.0
         swp = 0
 
-        label = "Stepping [{:12g}, {:12g}), Δt={:12g}".format(step.begin, check.end, step.size)
-        progress_bar.set_description(label)
-
-        while swp < 5 and res > rtol:
+        while swp < 10 and res > rtol:
+            label = "Sweep {} [{:12g}, {:12g}), Δt={:12g}".format(
+                swp, step.begin, check.end, step.size)
+            progress_bar.set_description(label)
             res = eom.sweep(dt=step.size, solver=solver)
             swp += 1
 
@@ -307,8 +331,8 @@ def stepper(check):
     return parallel.bcast(nrg_df.energy_rate.iloc[-1])
 
 def checkers():
-    for check in CheckpointStepper(start=0.0,
-                                   stops=chkpts,
+    for check in CheckpointStepper(start=t,
+                                   stops=checkpoints,
                                    stop=t_fin):
         dFv_dt = stepper(check)
         _ = check.succeeded()
@@ -321,9 +345,10 @@ def checkers():
 
         # Endpoint detection: volume-weighted time rate of change of
         # the free energy, per <https://doi.org/10.1016/j.commatsci.2016.09.022>
-        if dFv_dt < f_fin:
+        if t > t_min and dFv_dt < f_fin:
+            mprint("Endpoint condition achieved: δFᵥ/δt = {} < {}".format(dFv_dt, f_fin))
             break
 
-# === Evolve the Equations of Motion ===
 
+# Do it!
 checkers()
