@@ -1,7 +1,7 @@
 # Makefile for PFHub BM 1 variations
 # with periodic grids and serial solvers
 
-.PHONY: clean mon orig peri zany
+.PHONY: clean orig peri zany mks-orig mks-peri mks-zany
 
 orig: fipy-1a-variations.py
 	OMP_NUM_THREADS=1 python3 $< $@
@@ -12,8 +12,14 @@ peri: fipy-1a-variations.py
 zany: fipy-1a-variations.py
 	OMP_NUM_THREADS=1 python3 $< $@
 
-mon:
-	watch -n 10 "xsv table orig/energy.csv | head -n 15; echo '...'; xsv table orig/energy.csv | tail -n 15"
+mks-orig: spectral-1a-variations.py
+	OMP_NUM_THREADS=1 python3 $< orig
+
+mks-peri: spectral-1a-variations.py
+	OMP_NUM_THREADS=1 python3 $< peri
+
+mks-zany: spectral-1a-variations.py
+	OMP_NUM_THREADS=1 python3 $< zany
 
 clean:
 	rm -r orig/* peri/* zany/*

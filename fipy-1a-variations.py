@@ -32,9 +32,10 @@ import psutil
 
 from argparse import ArgumentParser
 
+from fipy import numerix as np
 from fipy import CellVariable
 from fipy import DiffusionTerm, ImplicitSourceTerm, TransientTerm
-from fipy import numerix, parallel, Viewer
+from fipy import parallel, Viewer
 from fipy import PeriodicGrid2D as Grid2D
 
 from fipy.solvers.petsc import LinearGMRESSolver as Solver
@@ -70,10 +71,10 @@ iodir = args.variant
 if not os.path.exists(iodir):
     os.mkdir(iodir)
 
-ceil = numerix.ceil
-cos  = numerix.cos
-pi   = numerix.pi
-log10= numerix.log10
+ceil = np.ceil
+cos  = np.cos
+pi   = np.pi
+log10= np.log10
 
 proc = psutil.Process()
 mpl.use("agg")
@@ -94,7 +95,11 @@ c = CellVariable(mesh=mesh, name=r"$c$",   hasOld=True)
 
 ### Prepare free energy output
 
-columns = [
+nrg_file = "{}/energy.csv".format(iodir) if rankIsHead else None
+res_file = "{}/residual.csv.gz".format(iodir) if rankIsHead else None
+chk_file = "{}/checkpoint.npz".format(iodir) if rankIsHead else None
+
+nrg_cols = (
     "wall_time",
     "time",
     "free_energy",
@@ -102,17 +107,21 @@ columns = [
     "timestep",
     "mass",
     "energy_rate"
-]
+)
 
-fcsv = "{}/energy.csv".format(iodir) if rankIsHead else None
-fnpz = "{}/checkpoint.npz".format(iodir) if rankIsHead else None
+res_cols = (
+    "time",
+    "timestep",
+    "sweep",
+    "residual"
+)
 
-restartFromCheckpoint = os.path.exists(fnpz)
+restartFromCheckpoint = os.path.exists(chk_file)
 
 # === Utility Functions ===
 
 def dump_restart(fnpz=None):
-    numerix.savez_compressed(fnpz, c=c.value, u=μ.value, t=t, dt=dt)
+    np.savez_compressed(fnpz, c=c.value, u=μ.value, t=t, dt=dt)
 
 def load_restart(fnpz=None):
     global t
@@ -120,7 +129,7 @@ def load_restart(fnpz=None):
     global c
     global μ
 
-    with numerix.load(fnpz) as data:
+    with np.load(fnpz) as data:
         c.value[:] = data["c"]
         μ.value[:] = data["u"]
         t = data["t"]
@@ -153,18 +162,19 @@ def update_energy(df=None):
         vals = (timer, t, nrg, mem, dt, mas, dFv_dt)
         index = [0] if firstRow else [len(df)]
 
-        update = pd.DataFrame([vals], columns=columns, index=index)
-
-        if firstRow:
-            return update
+        update = pd.DataFrame([vals], columns=nrg_cols, index=index)
 
         return pd.concat([df, update])
 
     return None
 
-def write_energy(fcsv=None, df=None):
-    if rankIsHead and df is not None and fcsv is not None:
-        df.to_csv(fcsv, index=False)
+def write_dataframe(filename=None, dataframe=None):
+    if rankIsHead and dataframe is not None and filename is not None:
+        if filename.endswith(".gz"):
+            compression = "gzip"
+        else:
+            compression = None
+        dataframe.to_csv(filename, index=False, compression=compression)
 
 def write_plot():
     imgname = "%s/spinodal.%08d.png" % (iodir, int(t))
@@ -193,10 +203,10 @@ t_min = 100_000     # nothing should end before this
 f_fin = 1e-16  # final rate of free energy evolution
 
 # Write to disk uniformly in logarithmic space
-checkpoints = numerix.unique(
+checkpoints = np.unique(
     [
         int(float(10**q)) for q in
-        numerix.arange(0, log10(t_fin), 0.1)
+        np.arange(0, log10(t_fin), 0.1)
     ]
 )
 
@@ -251,37 +261,39 @@ def initialize(A, B):
 
 if args.variant == "orig":
     # BM 1a specification: not periodic at all
-    A0 = numerix.array([0.105, 0.130, 0.025, 0.070])
-    B0 = numerix.array([0.110, 0.087,-0.150,-0.020])
+    A0 = np.array([0.105, 0.130, 0.025, 0.070])
+    B0 = np.array([0.110, 0.087,-0.150,-0.020])
 elif args.variant == "peri":
     # Even integers as close to spec as achievable:
     # exactly periodic at the domain boundaries
-    A0 = pi/Lx * numerix.array([6.0, 8.0, 2.0, 4.0])
-    B0 = pi/Ly * numerix.array([8.0, 6.0,-10.,-2.0])
+    A0 = pi/Lx * np.array([6.0, 8.0, 2.0, 4.0])
+    B0 = pi/Ly * np.array([8.0, 6.0,-10.,-2.0])
 elif args.variant == "zany":
     # Perturbation of the periodic coefficients:
     # almost periodic, visually similar to the original
-    A0 = pi/Lx * numerix.array([6.125, 7.875, 2.125, 4.125])
-    B0 = pi/Ly * numerix.array([7.875, 5.125,-9.875,-1.875])
+    A0 = pi/Lx * np.array([6.125, 7.875, 2.125, 4.125])
+    B0 = pi/Ly * np.array([7.875, 5.125,-9.875,-1.875])
 else:
     raise ValueError("Variant {} undefined.".format(args.variant))
 
 # Initialize or reload field variables
 
 if restartFromCheckpoint:
-    mprint("Resuming simulation from {}".format(fnpz))
+    mprint("Resuming simulation from {}".format(chk_file))
 
-    load_restart(fnpz)
+    load_restart(chk_file)
 
     # drop checkpoints we've already passed
     checkpoints = checkpoints[t < checkpoints]
 
-    nrg_df = pd.read_csv(fcsv)
+    nrg_df = pd.read_csv(nrg_file)
+    res_df = pd.read_csv(res_file)
 else:
     c.value = initialize(A0, B0)
     μ.value = d1fdc[:]
 
     nrg_df = update_energy()
+    res_df = None
 
 c.updateOld()
 μ.updateOld()
@@ -294,26 +306,38 @@ solver = Solver()
 
 write_plot()
 
-def stepper(check):
+def stepper_loop(check):
     global dt
     global t
     global nrg_df
+    global res_df
 
     progress_bar = tqdm(PIDStepper(start=check.begin,
                                    stop=check.end,
-                                   size=dt,
-                                   limiting=True))
+                                   size=dt))
+
+    n_sweep = 10
+
+    res_t = [0.0] * n_sweep
+    res_d = [0.0] * n_sweep
+    res_s = [0.0] * n_sweep
+    res_r = [0.0] * n_sweep
 
     for step in progress_bar:
-        res = 1.0
-        swp = 0
+        label = "[{:12g}, {:12g}), Δt={:12g}".format(
+            step.begin, check.end, step.size)
+        progress_bar.set_description(label)
 
-        while swp < 10 and res > rtol:
-            label = "Sweep {} [{:12g}, {:12g}), Δt={:12g}".format(
-                swp, step.begin, check.end, step.size)
-            progress_bar.set_description(label)
+        for i, sweep in enumerate(range(10)):
             res = eom.sweep(dt=step.size, solver=solver)
-            swp += 1
+            res_t[i] = t
+            res_d[i] = step.size
+            res_s[i] = sweep
+            res_r[i] = res
+
+        res_row = pd.DataFrame(list(zip(res_t, res_d, res_s, res_r)),
+                               columns=res_cols)
+        res_df = pd.concat([res_df, res_row])
 
         if step.succeeded(error=res/rtol):
             dt = step.size
@@ -330,16 +354,17 @@ def stepper(check):
     dt = step.want
     return parallel.bcast(nrg_df.energy_rate.iloc[-1])
 
-def checkers():
+def checkpoint_loop():
     for check in CheckpointStepper(start=t,
                                    stops=checkpoints,
                                    stop=t_fin):
-        dFv_dt = stepper(check)
+        dFv_dt = stepper_loop(check)
         _ = check.succeeded()
 
         write_plot()
-        write_energy(fcsv, nrg_df)
-        dump_restart(fnpz)
+        write_dataframe(nrg_file, nrg_df)
+        write_dataframe(res_file, res_df)
+        dump_restart(chk_file)
 
         gc.collect()
 
@@ -351,4 +376,4 @@ def checkers():
 
 
 # Do it!
-checkers()
+checkpoint_loop()
