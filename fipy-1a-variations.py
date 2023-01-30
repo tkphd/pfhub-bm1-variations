@@ -113,7 +113,8 @@ res_cols = (
     "time",
     "timestep",
     "sweep",
-    "residual"
+    "residual",
+    "success"
 )
 
 restartFromCheckpoint = os.path.exists(chk_file)
@@ -316,7 +317,7 @@ def stepper_loop(check):
                                    stop=check.end,
                                    size=dt))
 
-    n_sweep = 30
+    n_sweep = 5
 
     res_t = [0.0] * n_sweep
     res_d = [0.0] * n_sweep
@@ -335,11 +336,15 @@ def stepper_loop(check):
             res_s[i] = sweep
             res_r[i] = res
 
-        res_row = pd.DataFrame(list(zip(res_t, res_d, res_s, res_r)),
+        victorious = step.succeeded(error=res/rtol)
+
+        res_v = [victorious] * n_sweep
+
+        res_row = pd.DataFrame(list(zip(res_t, res_d, res_s, res_r, res_v)),
                                columns=res_cols)
         res_df = pd.concat([res_df, res_row])
 
-        if step.succeeded(error=res/rtol):
+        if victorious:
             dt = step.size
             t += dt
             c.updateOld()
