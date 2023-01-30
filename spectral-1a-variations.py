@@ -47,20 +47,20 @@ args = parser.parse_args()
 iodir = args.variant
 
 # Domain & numerical parameters
-dt = 1
-dx = 2**(-2)
+dt = 2**(-2)
+dx = 1  # 2**(-2)
 Lx = Ly = 200
 Nx = int(Lx/dx)
 
 α = 0.3
 β = 0.7
-ρ = 5.0
-κ = 2.0
-M = 5.0
-ζ = 0.5  # mean composition
+ρ = 5
+κ = 2
+M = 5
+ζ = 2**(-2)  # mean composition
 ϵ = 0.01 # noise amplitude
 
-t_fin = 20_000_000
+t_fin = 2_000_000 * M
 
 cos  = np.cos
 pi   = np.pi
@@ -136,10 +136,10 @@ def write_plot(data, t=0.0):
         plt.title(r"$t = %s$" % "{:,}".format(int(t)))
         plt.imshow(data)
         plt.colorbar()
-        locs = np.linspace(0, Nx, num=5, endpoint=True, dtype=int)
-        labs = np.linspace(0, Lx, num=5, endpoint=True, dtype=int)
-        plt.xticks(locs, labs)
-        plt.yticks(locs, np.flip(labs))
+        # locs = np.linspace(0, Nx, num=5, endpoint=True, dtype=int)
+        # labs = np.linspace(0, Lx, num=5, endpoint=True, dtype=int)
+        # plt.xticks(locs, labs)
+        # plt.yticks(locs, np.flip(labs))
         plt.savefig(imgname, bbox_inches="tight", dpi=400)
         plt.close()
 
@@ -152,24 +152,27 @@ def run():
     progress = tqdm(CheckpointStepper(start=0,
                                       stops=checkpoints,
                                       stop=t_fin),
+                    unit="step",
                     total=len(checkpoints),
-                    unit="step")
+                    bar_format='{l_bar}{bar:40}{r_bar}{bar:-40b}')
 
     for check in progress:
-        data_t = []
-        data_f = []
-        data_m = []
+        steps = np.arange(check.begin, check.end, dt)
 
-        for step in range(check.begin, check.end, dt):
-            label = "[{:>10s} .. {:>10s})".format("{:,d}".format(step), "{:,d}".format(check.end))
+        data_t = [0.0] * len(steps)
+        data_f = [0.0] * len(steps)
+        data_m = [0.0] * len(steps)
+
+        for i, step in enumerate(steps):
+            label = "[{:>13.2f} .. {:>13.2f})".format(step, check.end)
             progress.set_description(label)
+
             field = solve(field).compute()
 
-            data_t.append(t0 + dt * step / M)
-            data_f.append(calc_f_total(field[0], dx, gamma))
-            data_m.append(proc.memory_info().rss / 1024)
+            data_t[i] = t0 + dt * step / M
+            data_f[i] = calc_f_total(field[0], dx, gamma)
+            data_m[i] = proc.memory_info().rss / 1024
 
-        # df_idx = [0] if (df is None) else [len(df)]
         row = pd.DataFrame(list(zip(data_t, data_f, data_m)),
                            columns=["time", "free_energy", "mem_KB"])
 
@@ -178,6 +181,7 @@ def run():
         _ = check.succeeded()
 
         t0 = df.time.iloc[-1]
+
         write_plot(field[0], t0)
 
         gc.collect()
