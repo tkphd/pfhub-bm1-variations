@@ -316,7 +316,7 @@ def stepper_loop(check):
                                    stop=check.end,
                                    size=dt))
 
-    n_sweep = 10
+    n_sweep = 30
 
     res_t = [0.0] * n_sweep
     res_d = [0.0] * n_sweep
@@ -324,11 +324,11 @@ def stepper_loop(check):
     res_r = [0.0] * n_sweep
 
     for step in progress_bar:
-        label = "[{:12g}, {:12g}), Δt={:12g}".format(
-            step.begin, check.end, step.size)
-        progress_bar.set_description(label)
 
-        for i, sweep in enumerate(range(10)):
+        for i, sweep in enumerate(range(n_sweep)):
+            label = "[{:12g}, {:12g}).{:02d}, Δt={:12g}".format(
+                step.begin, check.end, sweep, step.size)
+            progress_bar.set_description(label)
             res = eom.sweep(dt=step.size, solver=solver)
             res_t[i] = t
             res_d[i] = step.size
