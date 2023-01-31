@@ -26,6 +26,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 import gc
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 import os
 import pandas as pd
 import psutil
@@ -35,7 +36,8 @@ from argparse import ArgumentParser
 from fipy import numerix as np
 from fipy import CellVariable
 from fipy import DiffusionTerm, ImplicitSourceTerm, TransientTerm
-from fipy import parallel, Viewer
+from fipy import parallel, MultiViewer
+from fipy import Matplotlib2DViewer as Viewer
 from fipy import PeriodicGrid2D as Grid2D
 
 from fipy.solvers.petsc import LinearGMRESSolver as Solver
@@ -57,24 +59,40 @@ parser = ArgumentParser(
     description = 'PFHub BM1 in FiPy with periodic initial condition variations'
 )
 
-parser.add_argument("variant", help="one of 'orig', 'peri', or 'zany'")
+parser.add_argument("-p", "--prefix", default="fipy", type=str,
+                    help="output directory name")
+parser.add_argument("-s", "--sweeps",  default=5,      type=int,
+                    help="number of sweeps per solver step")
+parser.add_argument("-v", "--variant", default="orig", type=str,
+                    help="one of 'orig', 'peri', or 'zany'")
 
 args = parser.parse_args()
+suffix = "{:02d}sw".format(args.sweeps)
 
 rank = parallel.procID
 rankIsHead = (rank == 0)
 
+def mprint(*args, **kwargs):
+    if rank == 0:
+        print(*args, **kwargs)
+
+
 if not rankIsHead:
     raise RuntimeError("ParallelGrid2D does not support parallel execution.")
 
-iodir = args.variant
+if not os.path.exists(args.prefix):
+    os.mkdir(args.prefix)
+
+iodir = "{}/{}-{}".format(args.prefix, args.variant, suffix)
 if not os.path.exists(iodir):
     os.mkdir(iodir)
+mprint(f"Writing simulation output to {iodir}")
 
 ceil = np.ceil
 cos  = np.cos
+exp  = np.exp
+log  = np.log
 pi   = np.pi
-log10= np.log10
 
 proc = psutil.Process()
 mpl.use("agg")
@@ -92,6 +110,24 @@ x, y = mesh.cellCenters
 
 c = CellVariable(mesh=mesh, name=r"$c$",   hasOld=True)
 μ = CellVariable(mesh=mesh, name=r"$\mu$", hasOld=True)
+
+#### Set thermo-kinetic constants from the BM1 specification
+
+α = 0.3
+β = 0.7
+ρ = 5.0
+κ = 2.0
+M = 5.0
+ζ = 0.5  # mean composition
+ϵ = 0.01 # noise amplitude
+
+t = 0.0
+dt = 1e-5
+rtol = 1e-3
+
+t_fin = 20_000  # nothing should take this long
+t_min = 10_000  # nothing should end before this
+f_fin = 1e-16   # final rate of free energy evolution
 
 ### Prepare free energy output
 
@@ -117,6 +153,14 @@ res_cols = (
     "success"
 )
 
+# Write to disk uniformly in logarithmic space
+checkpoints = np.unique(
+    [
+        int(float(exp(q))) for q in
+        np.arange(0, log(t_fin) + 0.1, 0.1)
+    ]
+)
+
 restartFromCheckpoint = os.path.exists(chk_file)
 
 # === Utility Functions ===
@@ -126,7 +170,6 @@ def dump_restart(fnpz=None):
 
 def load_restart(fnpz=None):
     global t
-    # global dt
     global c
     global μ
 
@@ -134,7 +177,6 @@ def load_restart(fnpz=None):
         c.value[:] = data["c"]
         μ.value[:] = data["u"]
         t = data["t"]
-        # dt = data["dt"]
 
 def fbulk(C):
     return ρ * (C - α)**2 * (β - C)**2
@@ -147,12 +189,7 @@ def energy_rate(df=None):
 
     return -delF / (V * dt)
 
-def mprint(*args, **kwargs):
-    if rank == 0:
-        print(*args, **kwargs)
-
 def update_energy(df=None):
-    firstRow = (df is None)
     # Integration of fields
     nrg = float((fbulk(c) + 0.5 * κ * (c.grad.mag)**2).sum())
     mas = c.sum()
@@ -161,8 +198,8 @@ def update_energy(df=None):
         dFv_dt = float(energy_rate(df))
         timer = time.time() - startTime
         vals = (timer, t, nrg, mem, dt, mas, dFv_dt)
-        index = [0] if firstRow else [len(df)]
 
+        index = [0] if (df is None) else [len(df)]
         update = pd.DataFrame([vals], columns=nrg_cols, index=index)
 
         return pd.concat([df, update])
@@ -177,39 +214,13 @@ def write_dataframe(filename=None, dataframe=None):
             compression = None
         dataframe.to_csv(filename, index=False, compression=compression)
 
-def write_plot():
-    imgname = "%s/spinodal.%08d.png" % (iodir, int(t))
+def write_plot(fig, viewers):
+    t_int = int(t)
+    imgname = f"{iodir}/bm1a.{t_int:09_d}.png"
     if rankIsHead and not os.path.exists(imgname):
-        viewer.title = r"$t = %12g$" % t
-        viewer.datamin = float(c.min())
-        viewer.datamax = float(c.max())
-        viewer.plot(filename=imgname)
-
-#### Set thermo-kinetic constants from the BM1 specification
-
-α = 0.3
-β = 0.7
-ρ = 5.0
-κ = 2.0
-M = 5.0
-ζ = 0.5  # mean composition
-ϵ = 0.01 # noise amplitude
-
-t = 0.0
-dt = 1e-5
-rtol = 1e-3
-
-t_fin = 20_000_000  # nothing should take this long
-t_min = 100_000     # nothing should end before this
-f_fin = 1e-16  # final rate of free energy evolution
-
-# Write to disk uniformly in logarithmic space
-checkpoints = np.unique(
-    [
-        int(float(10**q)) for q in
-        np.arange(0, log10(t_fin), 0.1)
-    ]
-)
+        fig.suptitle(f"$t = {t:,f}$")
+        viewers.plot()
+        plt.savefig(imgname, bbox_inches="tight", dpi=400)
 
 ### Define equations of motion
 #
@@ -299,13 +310,29 @@ else:
 c.updateOld()
 μ.updateOld()
 
+# === Create Viewers ===
+
+fig, axs = plt.subplots(1, 2, figsize=(14, 6),
+                        sharex=True, sharey=True,
+                        constrained_layout=True)
+
+fig.suptitle(r"$t = 0$")
+
+viewers = MultiViewer([Viewer(vars=(c,), title=r"$c$",
+                              axes=axs[0],
+                              datamin=α,
+                              datamax=β,
+                              figaspect=1.0, legend=None),
+                       Viewer(vars=(μ,), title=r"$\mu$",
+                              axes=axs[1],
+                              figaspect=1.0, legend=None,
+                              cmap=plt.cm.viridis_r)])
 
 # === Evolve the Equations of Motion ===
 
-viewer = Viewer(vars=(c,))
 solver = Solver()
 
-write_plot()
+write_plot(fig, viewers)
 
 def stepper_loop(check):
     global dt
@@ -366,7 +393,7 @@ def checkpoint_loop():
         dFv_dt = stepper_loop(check)
         _ = check.succeeded()
 
-        write_plot()
+        write_plot(fig, viewers)
         write_dataframe(nrg_file, nrg_df)
         write_dataframe(res_file, res_df)
         dump_restart(chk_file)
