@@ -1,7 +1,7 @@
 # Makefile for PFHub BM 1 variations
 # with periodic grids and serial solvers
 
-TIMEFMT = '\n   %E 〔%e𝑠 wall,  %U𝑠 user,  %S𝑠 sys,  %M KB,  %F faults,  %c switches〕'
+TIMEFMT = '\n   %E〔%e𝑠 wall,  %U𝑠 user,  %S𝑠 sys,  %M KB,  %F faults,  %c switches〕'
 SWEEPS = 3
 
 .PHONY: clean orig peri zany viz mks-orig mks-peri mks-zany

@@ -60,14 +60,17 @@ def read_and_plot(iodir, variant):
         df = pandas.read_csv(data_file)
         df.time[0] = 0.95 * df.time[1]  # no zeros in log-log plot
 
-        mem_col = [c for c in df.columns.values if c.startswith("mem")]
-        mem_scl = 1024 if "KB" in mem_col[0] else 1
+        if not "mem_KB" in df.columns.values:
+            df["mem_KB"] = df.mem_MB.apply(lambda x: 1024 * x)
 
         plt.figure(1)
         plt.loglog(df.time, df.free_energy, label=variants[variant])
 
         plt.figure(2)
-        plt.loglog(df.time, df[mem_col] / mem_scl, label=variants[variant])
+        plt.loglog(df.wall_time, df.mem_KB, label=variants[variant])
+
+        return (int(df.wall_time.iloc[-1]), int(df.mem_KB.iloc[-1]))
+
 
 def residual_plot(ax, iodir, variant, sweeps, rtol=1e-3):
     data_file = "{}/residual.csv.gz".format(iodir)
@@ -114,19 +117,21 @@ def plot_all(prefix=".", platform="FiPy", suffix=None):
     # prepare energy plot
     plt.figure(1, figsize=figsize)
     plt.title("BM 1a: {}".format(platform))
-    plt.xlabel(r"time $t$ / [a.u.]")
+    plt.xlabel(r"simulation time $t$ / [a.u.]")
     plt.ylabel(r"Free energy $\mathcal{F}$ / [J/m³]")
 
     # prepare memory plot
     plt.figure(2, figsize=figsize)
     plt.title("BM 1a: {}".format(platform))
-    plt.xlabel(r"time $t$ / [a.u.]")
+    plt.xlabel(r"wall time $t$ / [s]")
     plt.ylabel("Memory / [MB]")
 
     # plot the energy data
+    max_mem = [0.0, 0.0]
     for variant in variants.keys():
         iodir = f"{prefix}/{variant}{suffix}"
-        read_and_plot(iodir, variant)
+        df_mem = read_and_plot(iodir, variant)
+        max_mem =[max(max_mem[i], df_mem[i]) for i in range(2)]
 
     # save the plots
     plt.figure(1)
@@ -135,6 +140,8 @@ def plot_all(prefix=".", platform="FiPy", suffix=None):
     plt.close()
 
     plt.figure(2)
+    plt.annotate("⌈time⌉: {:7,} s\n ⌈mem⌉: {:7,} MB".format(max_mem[0], max_mem[1]//1024),
+                 (0.02*max_mem[0], 0.75*max_mem[1]))
     plt.legend(loc="best")
     plt.savefig(mem_image, bbox_inches="tight", dpi=dpi)
     plt.close()
