@@ -2,23 +2,22 @@
 # with periodic grids and serial solvers
 
 TIMEFMT = '\n   %E〔%e𝑠 wall,  %U𝑠 user,  %S𝑠 sys,  %M KB,  %F faults,  %c switches〕'
-SWEEPS = 7
 
 .PHONY: clean orig peri zany viz mks-orig mks-peri mks-zany
 
 # === FiPy ===
 
 orig: fipy-1a-variations.py
-	OMP_NUM_THREADS=1 python3 $< --prefix fipy --variant $@ --sweeps $(SWEEPS)
+	OMP_NUM_THREADS=1 python3 $< --prefix fipy --variant $@
 
 peri: fipy-1a-variations.py
-	OMP_NUM_THREADS=1 python3 $< --prefix fipy --variant $@ --sweeps $(SWEEPS)
+	OMP_NUM_THREADS=1 python3 $< --prefix fipy --variant $@
 
 zany: fipy-1a-variations.py
-	OMP_NUM_THREADS=1 python3 $< --prefix fipy --variant $@ --sweeps $(SWEEPS)
+	OMP_NUM_THREADS=1 python3 $< --prefix fipy --variant $@
 
 viz:
-	/usr/bin/time -f $(TIMEFMT) ./plot_energy.py --directory fipy --platform FiPy --sweeps $(SWEEPS)
+	/usr/bin/time -f $(TIMEFMT) ./plot_energy.py --directory fipy --platform FiPy
 
 # === PyMKS ===
 

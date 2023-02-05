@@ -61,13 +61,12 @@ parser = ArgumentParser(
 
 parser.add_argument("-p", "--prefix", default="fipy", type=str,
                     help="output directory name")
-parser.add_argument("-s", "--sweeps",  default=5,      type=int,
+parser.add_argument("-s", "--sweeps", default=5, type=int,
                     help="number of sweeps per solver step")
 parser.add_argument("-v", "--variant", default="orig", type=str,
                     help="one of 'orig', 'peri', or 'zany'")
 
 args = parser.parse_args()
-suffix = "{:02d}sw".format(args.sweeps)
 
 rank = parallel.procID
 rankIsHead = (rank == 0)
@@ -83,7 +82,7 @@ if not rankIsHead:
 if not os.path.exists(args.prefix):
     os.mkdir(args.prefix)
 
-iodir = "{}/{}-{}".format(args.prefix, args.variant, suffix)
+iodir = "{}/{}".format(args.prefix, args.variant)
 if not os.path.exists(iodir):
     os.mkdir(iodir)
 mprint(f"Writing simulation output to {iodir}")
@@ -125,9 +124,9 @@ t = 0.0
 dt = 1e-5
 rtol = 1e-3
 
-t_fin = 20_000  # nothing should take this long
-t_min = 10_000  # nothing should end before this
-f_fin = 1e-16   # final rate of free energy evolution
+t_fin = 10_000_000  # nothing should end before this
+t_min =  5_000_000  # nothing should end before this
+f_fin = 1e-16       # final rate of free energy evolution
 
 ### Prepare free energy output
 
@@ -143,14 +142,6 @@ nrg_cols = (
     "timestep",
     "mass",
     "energy_rate"
-)
-
-res_cols = (
-    "time",
-    "timestep",
-    "sweep",
-    "residual",
-    "success"
 )
 
 # Write to disk uniformly in logarithmic space
@@ -299,13 +290,11 @@ if restartFromCheckpoint:
     checkpoints = checkpoints[t < checkpoints]
 
     nrg_df = pd.read_csv(nrg_file)
-    res_df = pd.read_csv(res_file)
 else:
     c.value = initialize(A0, B0)
     μ.value = d1fdc[:]
 
     nrg_df = update_energy()
-    res_df = None
 
 c.updateOld()
 μ.updateOld()
@@ -338,38 +327,20 @@ def stepper_loop(check):
     global dt
     global t
     global nrg_df
-    global res_df
 
     progress_bar = tqdm(PIDStepper(start=check.begin,
                                    stop=check.end,
                                    size=dt))
 
-    n_sweep = 5
-
-    res_t = [0.0] * n_sweep
-    res_d = [0.0] * n_sweep
-    res_s = [0.0] * n_sweep
-    res_r = [0.0] * n_sweep
-
     for step in progress_bar:
+        label = "[{:12g}, {:12g}), Δt={:12g}".format(
+            step.begin, check.end, step.size)
+        progress_bar.set_description(label)
 
-        for i, sweep in enumerate(range(n_sweep)):
-            label = "[{:12g}, {:12g}).{:02d}, Δt={:12g}".format(
-                step.begin, check.end, sweep, step.size)
-            progress_bar.set_description(label)
+        for sweep in range(args.sweeps):
             res = eom.sweep(dt=step.size, solver=solver)
-            res_t[i] = t
-            res_d[i] = step.size
-            res_s[i] = sweep
-            res_r[i] = res
 
         victorious = step.succeeded(error=res/rtol)
-
-        res_v = [victorious] * n_sweep
-
-        res_row = pd.DataFrame(list(zip(res_t, res_d, res_s, res_r, res_v)),
-                               columns=res_cols)
-        res_df = pd.concat([res_df, res_row])
 
         if victorious:
             dt = step.size
@@ -381,31 +352,27 @@ def stepper_loop(check):
             c.value = c.old
             μ.value = μ.old
 
-        PETSc.garbage_cleanup()
+    PETSc.garbage_cleanup()
 
     dt = step.want
     return parallel.bcast(nrg_df.energy_rate.iloc[-1])
 
-def checkpoint_loop():
-    for check in CheckpointStepper(start=t,
-                                   stops=checkpoints,
-                                   stop=t_fin):
-        dFv_dt = stepper_loop(check)
-        _ = check.succeeded()
-
-        write_plot(fig, viewers)
-        write_dataframe(nrg_file, nrg_df)
-        write_dataframe(res_file, res_df)
-        dump_restart(chk_file)
-
-        gc.collect()
-
-        # Endpoint detection: volume-weighted time rate of change of
-        # the free energy, per <https://doi.org/10.1016/j.commatsci.2016.09.022>
-        if t > t_min and dFv_dt < f_fin:
-            mprint("Endpoint condition achieved: δFᵥ/δt = {} < {}".format(dFv_dt, f_fin))
-            break
-
 
 # Do it!
-checkpoint_loop()
+for check in CheckpointStepper(start=t,
+                               stops=checkpoints,
+                               stop=t_fin):
+    dFv_dt = stepper_loop(check)
+    _ = check.succeeded()
+
+    write_plot(fig, viewers)
+    write_dataframe(nrg_file, nrg_df)
+    dump_restart(chk_file)
+
+    gc.collect()
+
+    # Endpoint detection: volume-weighted time rate of change of
+    # the free energy, per <https://doi.org/10.1016/j.commatsci.2016.09.022>
+    if t > t_min and dFv_dt < f_fin:
+        mprint("Endpoint condition achieved: δFᵥ/δt = {} < {}".format(dFv_dt, f_fin))
+        break
