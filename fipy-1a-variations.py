@@ -330,11 +330,12 @@ def stepper_loop(check):
 
     progress_bar = tqdm(PIDStepper(start=check.begin,
                                    stop=check.end,
-                                   size=dt))
+                                   size=dt,
+                                   limiting=False))
 
     for step in progress_bar:
         label = "[{:12g}, {:12g}), Δt={:12g}".format(
-            step.begin, check.end, step.size)
+            step.begin, step.end, step.size)
         progress_bar.set_description(label)
 
         for sweep in range(args.sweeps):
@@ -352,7 +353,7 @@ def stepper_loop(check):
             c.value = c.old
             μ.value = μ.old
 
-    PETSc.garbage_cleanup()
+        PETSc.garbage_cleanup()
 
     dt = step.want
     return parallel.bcast(nrg_df.energy_rate.iloc[-1])
