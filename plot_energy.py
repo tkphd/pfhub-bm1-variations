@@ -106,7 +106,7 @@ def residual_plot(ax, iodir, variant, sweeps, rtol=1e-3):
 
     return tmax
 
-def plot_all(prefix=".", platform="FiPy", suffix=None):
+def plot_all(prefix=".", platform="FiPy", suffix=""):
     # create energy & memory plots for each variant,
     # and co-plot all energy results
 
@@ -169,6 +169,6 @@ def plot_all(prefix=".", platform="FiPy", suffix=None):
 
 if __name__ == "__main__":
     # read_and_plot(iodir)
-    suffix = None if args.sweeps is None \
+    suffix = "" if args.sweeps is None \
         else f"-{args.sweeps:02d}sw"
     plot_all(args.directory, args.platform, suffix)
