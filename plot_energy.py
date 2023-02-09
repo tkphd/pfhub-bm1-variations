@@ -69,6 +69,9 @@ def read_and_plot(iodir, variant):
         plt.figure(2)
         plt.loglog(df.wall_time, df.mem_KB, label=variants[variant])
 
+        plt.figure(3)
+        plt.loglog(df.time, df.energy_rate, label=variants[variant])
+
         return (int(df.wall_time.iloc[-1]), int(df.mem_KB.iloc[-1]))
 
 
@@ -106,12 +109,13 @@ def residual_plot(ax, iodir, variant, sweeps, rtol=1e-3):
 
     return tmax
 
-def plot_all(prefix=".", platform="FiPy", suffix=None):
+def plot_all(prefix=".", platform="FiPy", suffix=""):
     # create energy & memory plots for each variant,
     # and co-plot all energy results
 
     nrg_image = f"{prefix}/energy{suffix}.png"
     mem_image = f"{prefix}/memory{suffix}.png"
+    drv_image = f"{prefix}/drive{suffix}.png"
     res_image = f"{prefix}/residual{suffix}.png"
 
     # prepare energy plot
@@ -125,6 +129,12 @@ def plot_all(prefix=".", platform="FiPy", suffix=None):
     plt.title("BM 1a: {}".format(platform))
     plt.xlabel(r"wall time $t$ / [s]")
     plt.ylabel("Memory / [MB]")
+
+    # prepare driving force plot
+    plt.figure(3, figsize=figsize)
+    plt.title("BM 1a: {}".format(platform))
+    plt.xlabel(r"simulation time $t$ / [a.u.]")
+    plt.ylabel(r"Driving force $\frac{1}{V}\frac{\delta\mathcal{F}}{\delta t}$ / [J/m³]")
 
     # plot the energy data
     max_mem = [0.0, 0.0]
@@ -144,6 +154,11 @@ def plot_all(prefix=".", platform="FiPy", suffix=None):
                  (0.02*max_mem[0], 0.75*max_mem[1]))
     plt.legend(loc="best")
     plt.savefig(mem_image, bbox_inches="tight", dpi=dpi)
+    plt.close()
+
+    plt.figure(3)
+    plt.legend(loc="best")
+    plt.savefig(drv_image, bbox_inches="tight", dpi=dpi)
     plt.close()
 
     # plot the residual data, if available
@@ -169,6 +184,6 @@ def plot_all(prefix=".", platform="FiPy", suffix=None):
 
 if __name__ == "__main__":
     # read_and_plot(iodir)
-    suffix = None if args.sweeps is None \
+    suffix = "" if args.sweeps is None \
         else f"-{args.sweeps:02d}sw"
     plot_all(args.directory, args.platform, suffix)

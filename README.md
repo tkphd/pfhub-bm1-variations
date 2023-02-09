@@ -17,5 +17,16 @@ The coefficients are explored in `initial_conditions.py`.
 Consider using the [PyMKS Cahn-Hilliard example][pymks] to get a sense
 for the spectral solver's performance?
 
+Relevant papers:
+
+* _Coarsening kinetics from a variable-mobility Cahn-Hilliard equation:
+  Application of a semi-implicit Fourier spectral method_,
+  DOI: [10.1103/PhysRevE.60.3564](https://doi.org/10.1103/PhysRevE.60.3564)
+* _Maximally fast coarsening algorithms_,
+  DOI: [10.1103/PhysRevE.72.055701](https://doi.org/10.1103/PhysRevE.72.055701)
+* _Controlling the accuracy of unconditionally stable algorithms in the
+  Cahn-Hilliard equation_,
+  DOI: [10.1103/PhysRevE.75.017702](https://doi.org/10.1103/PhysRevE.75.017702)
+
 <!-- links -->
 [pymks]: https://pymks.readthedocs.io/en/stable/rst/notebooks/cahn_hilliard.html

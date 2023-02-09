@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-# # Upload Demo - Problem 1(a)
+# PyMKS solves:
+#
+# # $$ f_0 = \frac{1}{2} \left(1 - \phi \right)^2 \left(1 + \phi \right)^2 $$
+#
+# # $$ \dot{\phi} = \nabla^2 \left(\phi^3 - \phi \right) - \gamma \nabla^4 \phi$$
+#
+# `solve_cahn_hilliard` steps the above equation, spanning c = [-1, 1).
+# We need to map from one composition and bulk free energy to the other:
 
-# This code solves:
-#
-# # $$ f = \frac{1}{2} \left( 1 - \phi \right)^2 \left(1 +\phi \right)^2 $$
-#
-# # $$ \dot{\phi} = \nabla^2 \left( \phi^3 - \phi \right) - \gamma \nabla^4 \phi$$
-#
 # Problem 1(a) specified by
 #
 # # $$ f_a = 5 \left( 0.3 - \phi \right)^2 \left(0.7 - \phi \right)^2 $$
 
-# `solve_cahn_hilliard` does one step of the above equation. We need to map from one free energy to the other.
 
 from warnings import filterwarnings
 filterwarnings("ignore", category=DeprecationWarning)
@@ -47,20 +47,10 @@ args = parser.parse_args()
 iodir = args.variant
 
 # Domain & numerical parameters
-dt = 2**(-2)
-dx = 1  # 2**(-2)
+dt = 1.0  # 2**(-2)
+dx = 1.0  # 2**(-2)
 Lx = Ly = 200
 Nx = int(Lx/dx)
-
-α = 0.3
-β = 0.7
-ρ = 5
-κ = 2
-M = 5
-ζ = 2**(-2)  # mean composition
-ϵ = 0.01 # noise amplitude
-
-t_fin = 2_000_000 * M
 
 cos  = np.cos
 pi   = np.pi
@@ -85,16 +75,34 @@ elif args.variant == "zany":
 else:
     raise ValueError("Variant {} undefined.".format(args.variant))
 
-# Write to disk uniformly in logarithmic space
-checkpoints = np.unique(
-    [
-        int(float(10**q)) for q in
-        np.arange(0, log10(t_fin), 0.1)
-    ]
-)
-
 xx = np.linspace(dx / 2, Lx - dx / 2, Nx)
 x, y = np.meshgrid(xx, xx)
+
+# PyMKS coefficients
+α0 = -1.0  # α-phase composition
+β0 =  1.0  # β-phase composition
+ζ0 = (α0 + β0) / 2  # mean composition
+Δ0 = β0 - α0  # eqm. composition range
+ρ0 = 0.5
+
+# PFHub coefficients
+α = 0.3  # α-phase composition
+β = 0.7  # β-phase composition
+ζ = (α + β) / 2  # mean composition
+Δ = β - α  # eqm. composition range
+ρ = 5
+κ = 2
+M = 5
+ϵ = 0.01 # noise amplitude
+
+# scale from PFHub space into PyMKS space (unity)
+f0 = lambda c: ρ0 * (c - α0)**2 * (c - β0)**2
+fa = lambda c: ρ  * (c - α)**2  * (c - β)**2
+
+gamma = Δ**2 * (f0(ζ0) / fa(ζ)) / κ
+
+t_fin = 5_000_000
+
 
 def initialize(A, B, x, y):
     return ζ + ϵ * (
@@ -106,28 +114,31 @@ def initialize(A, B, x, y):
 
 
 initial_phi_ = lambda x, y: initialize(A0, B0, x, y)
-initial_phi = lambda x, y: (initial_phi_(x, y) - ζ) * κ / 0.4
-
-# ... Dan, what's all this about?
-f0 = lambda c: 0.5 * (1 - c)**2 * (1 + c)**2
-f1 = lambda c: ρ * (c - α)**2 * (c - β)**2
-
-gamma = 0.4**2 * f0(0) / f1(ζ) / 2
+initial_phi  = lambda x, y: (initial_phi_(x, y) - ζ) * κ / Δ
 
 solve_ = curry(solve_cahn_hilliard)
 solve = solve_(n_steps=1, delta_x=dx, delta_t=dt, gamma=gamma)
 
 # Functions to run and calculate the free energy
 
+# Write to disk uniformly in logarithmic space
+checkpoints = np.unique(
+    [
+        int(float(10**q)) for q in
+        np.arange(0, log10(t_fin), 0.1)
+    ]
+)
+
 def calc_grad_mag(data):
     datax = np.concatenate((data[-1:, :], data, data[:1, :]), axis=0)
     datay = np.concatenate((data[:, -1:], data, data[:, :1]), axis=1)
-    phi_x = (datax[2:, :] - datax[:-2, :]) / 2 / dx
-    phi_y = (datay[:, 2:] - datay[:, :-2]) / 2 / dx
-    return np.sum((phi_x**2 + phi_y**2))
+    grad_x = 0.5 * (datax[2:, :] - datax[:-2, :]) / dx
+    grad_y = 0.5 * (datay[:, 2:] - datay[:, :-2]) / dx
+    return np.sum((grad_x**2 + grad_y**2))
 
 def calc_f_total(data, dx, gamma):
-    return f1(ζ) / f0(0) * (np.sum(f0(data)) + 0.5 * gamma * calc_grad_mag(data)) * dx**2
+    return fa(ζ) / f0(ζ0) * (
+        np.sum(f0(data)) + 0.5 * gamma * calc_grad_mag(data)) * dx**2
 
 def write_plot(data, t=0.0):
     imgname = "pymks/%s/spectral.%08d.png" % (iodir, int(t))
