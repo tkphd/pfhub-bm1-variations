@@ -63,16 +63,19 @@ def read_and_plot(iodir, variant):
         if not "mem_KB" in df.columns.values:
             df["mem_KB"] = df.mem_MB.apply(lambda x: 1024 * x)
 
+        clock = "wall_time" if "wall_time" in df.columns.values else "time"
+
         plt.figure(1)
         plt.loglog(df.time, df.free_energy, label=variants[variant])
 
         plt.figure(2)
-        plt.loglog(df.wall_time, df.mem_KB, label=variants[variant])
+        plt.loglog(df[clock], df.mem_KB, label=variants[variant])
 
-        plt.figure(3)
-        plt.loglog(df.time, df.energy_rate, label=variants[variant])
+        if "energy_rate" in df.columns.values:
+            plt.figure(3)
+            plt.loglog(df.time, df.energy_rate, label=variants[variant])
 
-        return (int(df.wall_time.iloc[-1]), int(df.mem_KB.iloc[-1]))
+        return (int(df[clock].iloc[-1]), int(df.mem_KB.iloc[-1]))
 
 
 def residual_plot(ax, iodir, variant, sweeps, rtol=1e-3):
@@ -156,10 +159,13 @@ def plot_all(prefix=".", platform="FiPy", suffix=""):
     plt.savefig(mem_image, bbox_inches="tight", dpi=dpi)
     plt.close()
 
-    plt.figure(3)
-    plt.legend(loc="best")
-    plt.savefig(drv_image, bbox_inches="tight", dpi=dpi)
-    plt.close()
+    try:
+        plt.figure(3)
+        plt.legend(loc="best")
+        plt.savefig(drv_image, bbox_inches="tight", dpi=dpi)
+        plt.close()
+    except ImportError:
+        pass
 
     # plot the residual data, if available
     haveResiduals = any([path.exists(f"{prefix}/{variant}{suffix}/residual.csv.gz")

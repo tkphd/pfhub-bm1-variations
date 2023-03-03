@@ -1,9 +1,9 @@
 # Makefile for PFHub BM 1 variations
 # with periodic grids and serial solvers
 
-TIMEFMT = '\n   %E〔%e𝑠 wall,  %U𝑠 user,  %S𝑠 sys,  %M KB,  %F faults,  %c switches〕'
+TIMEIT = /usr/bin/time -f '\n   %E〔%e𝑠 wall,  %U𝑠 user,  %S𝑠 sys,  %M KB,  %F faults,  %c switches〕'
 
-.PHONY: clean orig peri zany viz mks-orig mks-peri mks-zany
+.PHONY: clean orig peri zany viz mks-clean mks-orig mks-peri mks-zany mks-viz
 
 # === FiPy ===
 
@@ -17,20 +17,24 @@ zany: fipy-1a-variations.py
 	OMP_NUM_THREADS=1 python3 $< --prefix fipy --variant $@
 
 viz:
-	/usr/bin/time -f $(TIMEFMT) ./plot_energy.py --directory fipy --platform FiPy
+	$(TIMEIT) ./plot_energy.py --directory fipy --platform FiPy
+
+clean:
+	rm -r fipy/orig/* fipy/peri/* fipy/zany/*
 
 # === PyMKS ===
 
-mks-orig: spectral-1a-variations.py
-	OMP_NUM_THREADS=1 python3 $< orig
+mks-orig: pymks-1a-variations.py
+	OMP_NUM_THREADS=1 $(TIMEIT) python3 $< orig
 
-mks-peri: spectral-1a-variations.py
-	OMP_NUM_THREADS=1 python3 $< peri
+mks-peri: pymks-1a-variations.py
+	OMP_NUM_THREADS=1 $(TIMEIT) python3 $< peri
 
-mks-zany: spectral-1a-variations.py
-	OMP_NUM_THREADS=1 python3 $< zany
+mks-zany: pymks-1a-variations.py
+	OMP_NUM_THREADS=1 $(TIMEIT) python3 $< zany
 
-# === Utilities ===
+mks-viz:
+	$(TIMEIT) ./plot_energy.py --directory pymks --platform PyMKS
 
-clean:
-	rm -r orig/* peri/* zany/*
+mks-clean:
+	rm -r pymks/orig/* pymks/peri/* pymks/zany/*
