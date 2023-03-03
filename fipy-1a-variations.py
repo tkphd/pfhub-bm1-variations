@@ -124,9 +124,9 @@ t = 0.0
 dt = 1e-5
 rtol = 1e-3
 
-t_fin = 10_000_000  # nothing should end before this
-t_min =  5_000_000  # nothing should end before this
-f_fin = 1e-16       # final rate of free energy evolution
+t_fin = 9_000_000  # maximum simulation time
+t_min = 5_000_000  # minimum simulation time
+f_fin = 1e-16      # threshold for energy descent endpoint detection
 
 ### Prepare free energy output
 
@@ -363,7 +363,7 @@ def stepper_loop(check):
 for check in CheckpointStepper(start=t,
                                stops=checkpoints,
                                stop=t_fin):
-    dFv_dt = stepper_loop(check)
+    dFv_dt = np.fabs(stepper_loop(check))
     _ = check.succeeded()
 
     write_plot(fig, viewers)
