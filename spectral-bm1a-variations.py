@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # coding: utf-8
 
 # # PFHub BM 1a in FiPy with Steppyngstounes
@@ -9,18 +9,50 @@
 # the boundaries but otherwise match the specification.
 
 from argparse import ArgumentParser
+import csv
 import numpy as np
 import os
+from sparkline import sparkify
 from steppyngstounes import CheckpointStepper, FixedStepper
 import time
 
-from spectral import evolve_ch, free_energy
+from spectral import Evolver
 
 startTime = time.time()
 
-hat = lambda x: 0.5 * (1 + np.tanh(np.pi * x / 10)) * (1 + np.tanh(np.pi * (L - x) / 10)) - 1
+# Read command line arguments
 
-ic = lambda x, y, A, B: \
+parser = ArgumentParser()
+parser.add_argument("iodir", help="root directory for output files")
+parser.add_argument("dx", help="mesh spacing", type=float)
+parser.add_argument("dt", help="timestep", type=float)
+parser.add_argument("sweeps", help="number of non-linear sweeps per solve", type=int)
+args = parser.parse_args()
+
+dx = args.dx
+dt = args.dt
+iodir = f"{args.iodir}/dx{dx:4.02f}_dt{dt:4.02f}_sw{args.sweeps:02d}"
+
+if not os.path.exists(iodir):
+    print("Saving output to", iodir)
+    os.mkdir(iodir)
+
+# System parameters & kinetic coefficients
+
+L = 200.
+N = np.rint(L / dx).astype(int)
+
+ζ = 0.5   # mean composition
+ϵ = 0.01  # noise amplitude
+λ = 0.04 * L  # width of periodic boundary shell
+
+A = np.array([0.105, 0.130, 0.025, 0.070])  # 1 / L * np.array([21.0, 26.0, 5.0, 14.0])
+B = np.array([0.110, 0.087, 0.150, 0.020])  # 1 / L * np.array([22.0, 17.4, 30.0, 4.0])
+
+# smooth top-hat function
+hat = lambda x: 0.5 * (1 + np.tanh(np.pi * x / λ)) * (1 + np.tanh(np.pi * (L - x) / λ)) - 1
+
+ic = lambda x, y: \
     ζ + ϵ * hat(x) * hat(y) * (
         np.cos(A[0] * x) * np.cos(B[0] * y)
      + (np.cos(A[1] * x) * np.cos(B[1] * y)) ** 2
@@ -34,22 +66,20 @@ def log_points(t0, t1):
     Return values uniformly spaced in log₂
     """
     log_dt = np.log10(2) / 2
-    log_t0 = np.log2(t0)
-    log_t1 = np.log2(t1 + log_dt)
+    log_t0 = np.log10(t0)
+    log_t1 = np.log10(t1)
     n_pnts = np.ceil((log_t1 - log_t0) / log_dt).astype(int)
-    return np.unique(np.rint(np.logspace(log_t0, log_t1, base=10., num=n_pnts)).astype(int))
-
-
-def spectral_energy(c, K):
-    c_hat = np.fft.fft2(c)
-
-    return free_energy(c, c_hat, K, 𝜅, dx, 𝜚, 𝛼, 𝛽)
+    return np.unique(np.rint(np.logspace(log_t0, log_t1,
+                                         base=10., num=n_pnts)).astype(int))
 
 
 def start_report():
     e_file = f"{iodir}/ene.csv"
+    header = "runtime,time,free_energy"
+    for sweep in range(args.sweeps):
+        header += f",res{sweep:02}"
     with open(e_file, "w") as fh:
-        fh.write("runtime,time,free_energy\n")
+        fh.write(f"{header}\n")
 
 
 def write_and_report(t, c, energies):
@@ -57,38 +87,8 @@ def write_and_report(t, c, energies):
 
     if energies is not None:
         with open(f"{iodir}/ene.csv", "a") as fh:
-            for row in energies:
-                fh.write("{},{},{}\n".format(*row))
-
-
-# Read command line arguments
-
-parser = ArgumentParser()
-parser.add_argument("iodir", help="root directory for output files")
-parser.add_argument("dx", help="mesh spacing", type=float)
-parser.add_argument("dt", help="timestep", type=float)
-args = parser.parse_args()
-
-dx = args.dx
-dt = args.dt
-iodir = f"{args.iodir}/dx{dx:.03f}_dt{dt:.03f}"
-
-# System parameters & kinetic coefficients
-
-L = 200.
-N = np.rint(L / dx).astype(int)
-
-α = 0.3   # eqm composition of phase A
-β = 0.7   # eqm composition of phase B
-ρ = 5.0   # well height
-κ = 2.0   # gradient energy coeff
-M = 5.0   # diffusivity
-ζ = 0.5   # mean composition
-ϵ = 0.01  # noise amplitude
-
-if not os.path.exists(iodir):
-    print("Saving output to", iodir)
-    os.mkdir(iodir)
+            writer = csv.writer(fh)
+            writer.writerows(energies)
 
 # === prepare to evolve ===
 
@@ -96,25 +96,24 @@ t = 0.0
 energies = None
 
 start = 1.0
-stop = 2e6
+stop = 1e3  # 2e6
 stops = np.unique(log_points(start, stop))
 
 start_report()
 
 # === generate the initial condition ===
 
-A = 1 / L * np.array([21.0, 26.0, 5.0, 14.0])  # [0.105, 0.130, 0.025, 0.070]
-B = 1 / L * np.array([22.0, 17.4, 30.0, 4.0])  # [0.110, 0.087, 0.150, 0.020]
-
 x = np.linspace(0., L, N)
 X, Y = np.meshgrid(x, x, indexing="xy")
 
-k = 2 * np.pi * np.fft.fftfreq(N, d=dx).real
-K = np.array(np.meshgrid(k, k, indexing="ij"))
-
 c = ic(X, Y)
 
-energies = [[time.time() - startTime, t, spectral_energy(c, K)]]
+evolve_ch = Evolver(c, dx, args.sweeps)
+
+# write initial energy
+
+res = np.zeros(args.sweeps)
+energies = [[time.time() - startTime, t, evolve_ch.free_energy(), *res]]
 
 write_and_report(t, c, energies)
 
@@ -124,18 +123,21 @@ for check in CheckpointStepper(start=t, stops=stops, stop=stop):
     for step in FixedStepper(start=check.begin, stop=check.end, size=dt):
         dt = step.size
 
-        c, nrg = evolve_ch(c, dt, dx, M, κ, ρ, α, β)
+        nrg, res = evolve_ch.solve(dt)
 
-        t+= dt
+        t += dt
 
         elapsed = time.time() - startTime
 
-        energies.append([elapsed, t, nrg])
+        energies.append([elapsed, t, nrg, *res])
 
         _ = step.succeeded()
 
     dt = step.want
 
-    write_and_report(t, c, energies)
+    write_and_report(t, evolve_ch.c, energies)
+
+    print(f"Checkpoint {t:6.1f}: ", end="")
+    print(sparkify(res))
 
     _ = check.succeeded()
