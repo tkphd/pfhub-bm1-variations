@@ -8,6 +8,8 @@ import numpy.linalg as LA
 ρ = 5.0  # well height
 κ = 2.0  # gradient energy coeff
 M = 5.0  # diffusivity
+a1 = 3   # convex splitting parameter (linear term)
+a2 = 0   # convex splitting parameter (biharm term)
 
 def finterf(c_hat, Ksq):
     # interfacial free energy density
@@ -23,9 +25,29 @@ def dfdc(c):
     # derivative of bulk free energy density
     return 2 * ρ * (c - α) * (c - β) * (2 * c - (α + β))
 
-def dfdc_split(c_new, c_old):
+def dfdc_grouped(c):
+    o3 = 4 * ρ * c**3
+    o2 = 6 * ρ * (-α - β) * c**2
+    o1 = 2 * ρ * (α**2 + 4 * α * β + β**2) * c
+    o0 = 2 * ρ * (-α**2 * β - α * β**2)
+
+    return o3 + o2 + o1 + o0
+
+def dfdc_lin(c):
+    # linear component of derivative of free energy density
+    return 2 * ρ * (α**2 + 4 * α * β + β**2) * c
+
+def dfdc_non(c):
+    o3 = 4 * ρ * c**3
+    o2 = 6 * ρ * (-α - β) * c**2
+    o0 = 2 * ρ * (-α**2 * β - α * β**2)
+
+    return o3 + o2 + o0
+
+
+def dfdc_split(c_new, c_old, a1):
     # derivative of bulk free energy density
-    return 2 * ρ * (c_old - α) * (c_old - β) * (2 * c_new - (α + β))
+    return dfdc_non(c_old) + (1 - a1) * dfdc_lin(c_new) + a1 * dfdc_lin(c_old)
 
 
 def c_x(c_hat, K):
@@ -63,23 +85,6 @@ class Evolver:
         self.alias_mask = np.array(np.sqrt(self.K[0]**2 + self.K[1]**2) < self.nyquist_mode,
                                   dtype=bool)
 
-    # def solve(self, dt):
-    #     # iterate with c_hat pinned to old value
-    #     self.c_old[:] = self.c
-    #     self.c_hat_old[:] = self.c_hat
-    #     res = np.zeros(self.sweeps)
-
-    #     for sweep in range(self.sweeps):
-    #         self.dfdc_hat[:] = np.where(self.alias_mask,
-    #                                     np.fft.fft2(dfdc(self.c)),
-    #                                     0.)
-    #         self.c_hat[:] = (self.c_hat_old - dt * self.Ksq * M * self.dfdc_hat) \
-    #                       / (1 + dt * M * κ * self.Ksq**2)
-    #         self.c[:] = np.abs(np.fft.ifft2(self.c_hat)).astype(float)
-
-    #         res[sweep] = LA.norm(self.c - self.c_old)
-
-    #     return self.free_energy(), res
 
     def solve(self, dt):
         # iterate with c_hat pinned to old value, and
@@ -92,9 +97,7 @@ class Evolver:
         sweep = 0
 
         while sweep < self.sweeps and delta > 1e-5:
-            self.dfdc_hat[:] = np.where(self.alias_mask,
-                                        np.fft.fft2(dfdc_split(self.c, self.c_old)),
-                                        0.)
+            self.dfdc_hat[:] = self.alias_mask * np.fft.fft2(dfdc_split(self.c, self.c_old, a1))
             self.c_hat[:] = (self.c_hat_old - dt * self.Ksq * M * self.dfdc_hat) \
                           / (1 + dt * M * κ * self.Ksq**2)
             self.c[:] = np.abs(np.fft.ifft2(self.c_hat)).astype(float)

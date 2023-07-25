@@ -15,6 +15,7 @@ import os
 from sparkline import sparkify
 from steppyngstounes import CheckpointStepper, FixedStepper
 import time
+from tqdm import tqdm
 
 from spectral import Evolver
 
@@ -39,6 +40,7 @@ if not os.path.exists(iodir):
 
 # System parameters & kinetic coefficients
 
+t_final = 5e4
 L = 200.
 N = np.rint(L / dx).astype(int)
 
@@ -61,16 +63,19 @@ ic = lambda x, y: \
     )
 
 
-def log_points(t0, t1):
+def progression():
     """
-    Return values uniformly spaced in log₂
+    Generate a sequence of numbers that progress in logarithmic space:
+    1, 2,.. 10, 20,.. 100, 200,.. 1000, 2000, etc.
+    but *don't* store them all in memory!
     """
-    log_dt = np.log10(2) / 2
-    log_t0 = np.log10(t0)
-    log_t1 = np.log10(t1)
-    n_pnts = np.ceil((log_t1 - log_t0) / log_dt).astype(int)
-    return np.unique(np.rint(np.logspace(log_t0, log_t1,
-                                         base=10., num=n_pnts)).astype(int))
+    delta = 1
+    value = 0
+    while True:
+        value += delta
+        yield value
+        if (value == 10*delta):
+            delta = value
 
 
 def start_report():
@@ -95,10 +100,6 @@ def write_and_report(t, c, energies):
 t = 0.0
 energies = None
 
-start = 1.0
-stop = 1e6  # 2e6
-stops = np.unique(log_points(start, stop))
-
 start_report()
 
 # === generate the initial condition ===
@@ -117,10 +118,22 @@ energies = [[time.time() - startTime, t, evolve_ch.free_energy(), *res]]
 
 write_and_report(t, c, energies)
 
-for check in CheckpointStepper(start=t, stops=stops, stop=stop):
+tq_fmt = "{desc}: {percentage:3.0f}%|{bar}| {n:>7,d}/{total:<7,d} {elapsed} + {remaining}{postfix}"
+spark = "sweep-residuals"
+
+for check in CheckpointStepper(start=t,
+                               stops=progression(),
+                               stop=t_final):
     energies = []
 
-    for step in FixedStepper(start=check.begin, stop=check.end, size=dt):
+    pbar = tqdm(FixedStepper(start=check.begin, stop=check.end, size=dt),
+                desc=f"t->{check.end:7,.0f}",
+                total=np.ceil((check.end - check.begin) / dt).astype(int),
+                bar_format=tq_fmt,
+                ncols=89,
+                postfix=f"{spark:20s}")
+
+    for step in pbar:
         dt = step.size
 
         nrg, res = evolve_ch.solve(dt)
@@ -137,7 +150,6 @@ for check in CheckpointStepper(start=t, stops=stops, stop=stop):
 
     write_and_report(t, evolve_ch.c, energies)
 
-    print(f"Checkpoint {t:6.1f}: ", end="")
-    print(sparkify(res))
+    spark = sparkify(res)
 
     _ = check.succeeded()
