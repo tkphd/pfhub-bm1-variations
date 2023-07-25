@@ -71,9 +71,9 @@ class Evolver:
 
     #     for sweep in range(self.sweeps):
     #         self.dfdc_hat[:] = np.where(self.alias_mask,
-    #                                     np.fft.fft2(dfdc_split(self.c, self.c_old)),
+    #                                     np.fft.fft2(dfdc(self.c)),
     #                                     0.)
-    #         self.c_hat[:] = (self.c_hat - dt * self.Ksq * M * self.dfdc_hat) \
+    #         self.c_hat[:] = (self.c_hat_old - dt * self.Ksq * M * self.dfdc_hat) \
     #                       / (1 + dt * M * κ * self.Ksq**2)
     #         self.c[:] = np.abs(np.fft.ifft2(self.c_hat)).astype(float)
 
@@ -86,9 +86,12 @@ class Evolver:
         # naïvely splitting dfdc_hat between old and new values
         self.c_old[:] = self.c
         self.c_hat_old[:] = self.c_hat
-        res = np.zeros(self.sweeps)
+        res = np.empty(self.sweeps, dtype=float)
 
-        for sweep in range(self.sweeps):
+        delta = 1.0
+        sweep = 0
+
+        while sweep < self.sweeps and delta > 1e-5:
             self.dfdc_hat[:] = np.where(self.alias_mask,
                                         np.fft.fft2(dfdc_split(self.c, self.c_old)),
                                         0.)
@@ -97,6 +100,11 @@ class Evolver:
             self.c[:] = np.abs(np.fft.ifft2(self.c_hat)).astype(float)
 
             res[sweep] = LA.norm(self.c - self.c_old)
+
+            if sweep > 1:
+                delta = np.abs(res[sweep] - res[sweep - 1]) / res[sweep - 1]
+
+            sweep += 1
 
         return self.free_energy(), res
 

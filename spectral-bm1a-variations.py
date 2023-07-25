@@ -96,7 +96,7 @@ t = 0.0
 energies = None
 
 start = 1.0
-stop = 1e3  # 2e6
+stop = 1e6  # 2e6
 stops = np.unique(log_points(start, stop))
 
 start_report()
