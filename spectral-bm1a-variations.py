@@ -39,7 +39,7 @@ if not os.path.exists(iodir):
 
 # System parameters & kinetic coefficients
 
-t_final = 1e4
+t_final = 50e3
 L = 200.
 N = np.rint(L / dx).astype(int)
 
@@ -50,6 +50,9 @@ N = np.rint(L / dx).astype(int)
 A = np.array([0.105, 0.130, 0.025, 0.070])  # 1 / L * np.array([21.0, 26.0, 5.0, 14.0])
 B = np.array([0.110, 0.087, 0.150, 0.020])  # 1 / L * np.array([22.0, 17.4, 30.0, 4.0])
 
+Ap = np.pi / L * np.array([6.0, 8.0, 2.0, 4.0])
+Bp = np.pi / L * np.array([8.0, 6.0,-10.,-2.0])
+
 # smooth top-hat function
 hat = lambda x: 0.5 * (1 + np.tanh(np.pi * x / λ)) * (1 + np.tanh(np.pi * (L - x) / λ)) - 1
 
@@ -59,6 +62,15 @@ ic = lambda x, y: \
      + (np.cos(A[1] * x) * np.cos(B[1] * y)) ** 2
       + np.cos(A[2] * x - B[2] * y) \
       * np.cos(A[3] * x - B[3] * y)
+    )
+
+
+icp = lambda x, y: \
+    ζ + ϵ * (
+        np.cos(Ap[0] * x) * np.cos(Bp[0] * y)
+     + (np.cos(Ap[1] * x) * np.cos(Bp[1] * y)) ** 2
+      + np.cos(Ap[2] * x - Bp[2] * y) \
+      * np.cos(Ap[3] * x - Bp[3] * y)
     )
 
 
@@ -106,7 +118,7 @@ start_report()
 x = np.linspace(0., L, N)
 X, Y = np.meshgrid(x, x, indexing="xy")
 
-c = ic(X, Y)
+c = icp(X, Y)
 
 evolve_ch = Evolver(c, dx, args.sweeps)
 
