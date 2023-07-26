@@ -23,15 +23,16 @@ startTime = time.time()
 # Read command line arguments
 
 parser = ArgumentParser()
+
 parser.add_argument("iodir", help="root directory for output files")
 parser.add_argument("dx", help="mesh spacing", type=float)
 parser.add_argument("dt", help="timestep", type=float)
-parser.add_argument("sweeps", help="number of non-linear sweeps per solve", type=int)
-args = parser.parse_args()
 
+args = parser.parse_args()
 dx = args.dx
 dt = args.dt
-iodir = f"{args.iodir}/dx{dx:4.02f}_dt{dt:4.02f}_sw{args.sweeps:02d}"
+
+iodir = f"{args.iodir}/dx{dx:4.02f}_dt{dt:4.02f}"
 
 if not os.path.exists(iodir):
     print("Saving output to", iodir)
@@ -39,7 +40,7 @@ if not os.path.exists(iodir):
 
 # System parameters & kinetic coefficients
 
-t_final = 50e3
+t_final = 1.5e6
 L = 200.
 N = np.rint(L / dx).astype(int)
 
@@ -91,9 +92,7 @@ def progression():
 
 def start_report():
     e_file = f"{iodir}/ene.csv"
-    header = "runtime,time,free_energy"
-    for sweep in range(args.sweeps):
-        header += f",res{sweep:02}"
+    header = "runtime,time,free_energy,error"
     with open(e_file, "w") as fh:
         fh.write(f"{header}\n")
 
@@ -120,12 +119,12 @@ X, Y = np.meshgrid(x, x, indexing="xy")
 
 c = icp(X, Y)
 
-evolve_ch = Evolver(c, dx, args.sweeps)
+evolve_ch = Evolver(c, dx)
 
 # write initial energy
 
-res = np.zeros(args.sweeps)
-energies = [[time.time() - startTime, t, evolve_ch.free_energy(), *res]]
+res = 1e-10
+energies = [[time.time() - startTime, t, evolve_ch.free_energy(), res]]
 
 write_and_report(t, c, energies)
 
@@ -145,13 +144,13 @@ for check in CheckpointStepper(start=t,
     for step in pbar:
         dt = step.size
 
-        nrg, res = evolve_ch.solve(dt)
+        nrg, err = evolve_ch.solve(dt)
 
         t += dt
 
         elapsed = time.time() - startTime
 
-        energies.append([elapsed, t, nrg, *res])
+        energies.append([elapsed, t, nrg, err])
 
         _ = step.succeeded()
 

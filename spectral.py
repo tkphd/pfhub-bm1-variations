@@ -24,11 +24,6 @@ def dfdc(c):
     return 2 * ρ * (c - α) * (β - c) * (α + β - 2 * c)
 
 
-# def dfdc_linear(c):
-#     # linear component of derivative of free energy density
-#     return 2 * ρ * (α**2 + 4 * α * β + β**2) * c
-
-
 def dfdc_nonlinear(c):
     return 2 * ρ * (2 * c**3 - 3 * (α + β) * c**2 - α**2 * β - α * β**2)
 
@@ -46,9 +41,8 @@ def free_energy(c, c_hat, K, dx):
 
 
 class Evolver:
-    def __init__(self, c, dx, sweeps):
+    def __init__(self, c, dx):
         self.dx = dx
-        self.sweeps = sweeps
 
         self.c = c.copy()
         self.c_old = np.empty_like(self.c)
@@ -79,11 +73,8 @@ class Evolver:
 
 
     def solve(self, dt):
-        # iterate with c_hat pinned to old value, and
-        # naïvely splitting dfdc_hat between old and new values
+        # semi-implicit discretization of the PFHub equation of motion
         self.c_old[:] = self.c
-        res = np.empty(self.sweeps, dtype=float)
-        sweep = 0
 
         self.dfdc_hat[:] = self.alias_mask * np.fft.fft2(dfdc_nonlinear(self.c))
 
@@ -92,21 +83,6 @@ class Evolver:
 
         self.c[:] = np.fft.ifft2(self.c_hat).real
 
-        res[sweep] = LA.norm(self.c - self.c_old)
-
-        # delta = 1.0
-
-        # while sweep < self.sweeps and delta > 1e-5:
-        #     self.dfdc_hat[:] = self.alias_mask * np.fft.fft2(dfdc_split(self.c, self.c_old, a1))
-        #     self.c_hat[:] = (self.c_hat_old - dt * self.Ksq * M * self.dfdc_hat) \
-        #                   / (1 + dt * M * κ * self.Ksq**2)
-        #     self.c[:] = np.abs(np.fft.ifft2(self.c_hat)).astype(float)
-
-        #     res[sweep] = LA.norm(self.c - self.c_old)
-
-        #     if sweep > 1:
-        #         delta = np.abs(res[sweep] - res[sweep - 1]) / res[sweep - 1]
-
-        #     sweep += 1
+        res = LA.norm(self.c - self.c_old)
 
         return self.free_energy(), res
