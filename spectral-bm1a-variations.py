@@ -58,6 +58,14 @@ Bp = np.pi / L * np.array([8.0, 6.0,-10.,-2.0])
 hat = lambda x: 0.5 * (1 + np.tanh(np.pi * x / λ)) * (1 + np.tanh(np.pi * (L - x) / λ)) - 1
 
 ic = lambda x, y: \
+    ζ + ϵ * (
+        np.cos(A[0] * x) * np.cos(B[0] * y)
+     + (np.cos(A[1] * x) * np.cos(B[1] * y)) ** 2
+      + np.cos(A[2] * x - B[2] * y) \
+      * np.cos(A[3] * x - B[3] * y)
+    )
+
+ic_tophat = lambda x, y: \
     ζ + ϵ * hat(x) * hat(y) * (
         np.cos(A[0] * x) * np.cos(B[0] * y)
      + (np.cos(A[1] * x) * np.cos(B[1] * y)) ** 2
@@ -65,8 +73,7 @@ ic = lambda x, y: \
       * np.cos(A[3] * x - B[3] * y)
     )
 
-
-icp = lambda x, y: \
+ic_peri = lambda x, y: \
     ζ + ϵ * (
         np.cos(Ap[0] * x) * np.cos(Bp[0] * y)
      + (np.cos(Ap[1] * x) * np.cos(Bp[1] * y)) ** 2
@@ -117,7 +124,7 @@ start_report()
 x = np.linspace(0., L, N)
 X, Y = np.meshgrid(x, x, indexing="xy")
 
-c = icp(X, Y)
+c = ic(X, Y)
 
 evolve_ch = Evolver(c, dx)
 
