@@ -12,7 +12,6 @@ from argparse import ArgumentParser
 import csv
 import numpy as np
 import os
-from sparkline import sparkify
 from steppyngstounes import CheckpointStepper, FixedStepper
 import time
 from tqdm import tqdm
@@ -40,7 +39,7 @@ if not os.path.exists(iodir):
 
 # System parameters & kinetic coefficients
 
-t_final = 5e4
+t_final = 1e4
 L = 200.
 N = np.rint(L / dx).astype(int)
 
@@ -119,7 +118,6 @@ energies = [[time.time() - startTime, t, evolve_ch.free_energy(), *res]]
 write_and_report(t, c, energies)
 
 tq_fmt = "{desc}: {percentage:3.0f}%|{bar}| {n:>7,d}/{total:<7,d} {elapsed} + {remaining}{postfix}"
-spark = "sweep-residuals"
 
 for check in CheckpointStepper(start=t,
                                stops=progression(),
@@ -130,8 +128,7 @@ for check in CheckpointStepper(start=t,
                 desc=f"t->{check.end:7,.0f}",
                 total=np.ceil((check.end - check.begin) / dt).astype(int),
                 bar_format=tq_fmt,
-                ncols=89,
-                postfix=f"{spark:20s}")
+                ncols=79)
 
     for step in pbar:
         dt = step.size
@@ -149,7 +146,5 @@ for check in CheckpointStepper(start=t,
     dt = step.want
 
     write_and_report(t, evolve_ch.c, energies)
-
-    spark = sparkify(res)
 
     _ = check.succeeded()
