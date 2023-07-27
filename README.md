@@ -31,8 +31,10 @@ convolutions in reciprocal space. The former simplifies life; the latter does
 not. In practice, convolutions are transformed, and non-linear terms are solved
 in real space and then transformed. Specifically,
 
-$$ \mathfrak{F}\left[\nabla \phi\right] = i\vec{k} $$
-$$ \mathfrak{F}\left[\nabla^2 \phi\right] = -\vec{k}^2 $$
+$$ \mathfrak{F}\left[\nabla c\right] = i\vec{k}\hat{c} $$
+
+$$ \mathfrak{F}\left[\nabla^2 c\right] = -\vec{k}^2 \hat{c}$$
+
 $$ \mathfrak{F}\left[\mathrm{const}\right] = \mathrm{const} $$
 
 Transforming the equation of motion, we have
@@ -62,21 +64,21 @@ $$
 This can be separated into linear and non-linear parts:
 
 $$
-\left.\frac{\partial f}{\partial c}\right|_{\mathrm{lin}} =
+\left(\frac{\partial f}{\partial c}\right)_{\mathrm{lin}} =
 2\rho \left((c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} + c_{\beta}^2) c -
 (c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)
 \right)
 $$
 
 $$
-\left.\frac{\partial f}{\partial c}\right|_{\mathrm{non}} =
+\left(\frac{\partial f}{\partial c}\right)_{\mathrm{non}} =
 2\rho\left(2 c^3 - 3(c_{\alpha} + c_{\beta}) c^2\right)
 $$
 
 It's straight-forward to transform the linear expression:
 
 $$
-\mathfrak{F}\left[\frac{\partial f}{\partial c}\right]_{\mathrm{lin}} =
+\mathfrak{F}\left[\left(\frac{\partial f}{\partial c}\right)_{\mathrm{lin}}\right] =
 2\rho \left((c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} + c_{\beta}^2) \hat{c} -
 (c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)
 \right)
