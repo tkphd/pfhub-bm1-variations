@@ -21,7 +21,7 @@ Broadly, the Cahn-Hilliard equation of motion is
 
 $$
 \frac{\partial c}{\partial t} =
-  M\nabla^2\left\{\frac{\partial f}{\partial c} - \kappa \nabla^2 c\right\}
+  M\nabla^2\left(\frac{\partial f}{\partial c} - \kappa \nabla^2 c\right)
 $$
 
 Using the Fourier transform from real to reciprocal space means convolutions
@@ -38,9 +38,9 @@ $$ \mathfrak{F}\left[\mathrm{const}\right] = \mathrm{const} $$
 Transforming the equation of motion, we have
 
 $$
-\frac{\partial \hat{c}}{\partial t} = - M\vec{k}^2\left\{
+\frac{\partial \hat{c}}{\partial t} = - M\vec{k}^2\left(
 \mathfrak{F}\left[\frac{\partial f}{\partial c}\right] +
-\kappa \vec{k}^2 \hat{c}\right\}
+\kappa \vec{k}^2 \hat{c}\right)
 $$
 
 For the PFHub equations,
@@ -53,33 +53,33 @@ $$
 which can be expanded out to
 
 $$
-\frac{\partial f}{\partial c} = 2\rho\left\{
+\frac{\partial f}{\partial c} = 2\rho\left(
 2 c^3 - 3(c_{\alpha} + c_{\beta}) c^2 + (c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} +
 c_{\beta}^2) c - (c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)
-\right\}
+\right)
 $$
 
 This can be separated into linear and non-linear parts:
 
 $$
 \left.\frac{\partial f}{\partial c}\right|_{\mathrm{lin}} =
-2\rho \left\{(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} + c_{\beta}^2) c -
+2\rho \left((c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} + c_{\beta}^2) c -
 (c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)
-\right\}
+\right)
 $$
 
 $$
 \left.\frac{\partial f}{\partial c}\right|_{\mathrm{non}} =
-2\rho\left\{2 c^3 - 3(c_{\alpha} + c_{\beta}) c^2\right\}
+2\rho\left(2 c^3 - 3(c_{\alpha} + c_{\beta}) c^2\right)
 $$
 
 It's straight-forward to transform the linear expression:
 
 $$
 \mathfrak{F}\left[\frac{\partial f}{\partial c}\right]_{\mathrm{lin}} =
-2\rho \left\{(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} + c_{\beta}^2) \hat{c} -
+2\rho \left((c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} + c_{\beta}^2) \hat{c} -
 (c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)
-\right\}
+\right)
 $$
 
 The non-linear remainder must be evaluated in real space, then transformed into
@@ -90,11 +90,11 @@ then assigns the linear terms to the "new" timestep. Doing so, grouping terms,
 and rearranging, we arrive at the spectral discretization for this problem:
 
 $$
-\hat{c}_{t+\Delta t} = \frac{\hat{c}_{t} - \Delta t M \vec{k}^2 \left\{
+\hat{c}_{t+\Delta t} = \frac{\hat{c}_{t} - \Delta t M \vec{k}^2 \left(
 \mathfrak{F}\left[\frac{\partial f}{\partial c}\right]_{\mathrm{non}} -
-2\rho(c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)\right\}}
-{1 + \Delta t M\left\{2\rho\vec{k}^2(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} +
-c_{\beta}^2) + \kappa \vec{k}^4\right\}}
+2\rho(c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)\right)}
+{1 + \Delta t M\left(2\rho\vec{k}^2(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} +
+c_{\beta}^2) + \kappa \vec{k}^4\right)}
 $$
 
 ## References
