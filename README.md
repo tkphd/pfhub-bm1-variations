@@ -78,9 +78,8 @@ It's straight-forward to transform the linear expression:
 
 $$
 \mathfrak{F}\left[\partial_{c} f_{\mathrm{lin}}\right] =
-2\rho \left((c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} + c_{\beta}^2) \hat{c} -
-(c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)
-\right)
+2\rho \left[(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} + c_{\beta}^2) \hat{c} -
+(c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)\right]
 $$
 
 The non-linear remainder must be evaluated in real space, then transformed into
@@ -91,7 +90,7 @@ then assigns the linear terms to the "new" timestep. Doing so, grouping terms,
 and rearranging, we arrive at the spectral discretization for this problem:
 
 $$
-\hat{c}_{t+\Delta t} = \frac{\hat{c}_{t} - \Delta t M \vec{k}^2 \left(
+\hat{c}_{\mathrm{new}} = \frac{\hat{c}_{\mathrm{old}} - \Delta t M \vec{k}^2 \left(
 \mathfrak{F}\left[\partial_{c} f_{\mathrm{non}}\right] -
 2\rho(c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)\right)}
 {1 + \Delta t M\left[2\rho\vec{k}^2(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} +
