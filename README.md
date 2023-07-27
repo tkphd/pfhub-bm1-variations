@@ -90,7 +90,7 @@ then assigns the linear terms to the "new" timestep. Doing so, grouping terms,
 and rearranging, we arrive at the spectral discretization for this problem:
 
 $$
-\hat{c_{\mathrm{new}}} = \frac{\hat{c_{\mathrm{old}}} - \Delta t M \vec{k}^2 \left(
+\widehat{c_{t + \Delta t}} = \frac{\widehat{c_{t}} - \Delta t M \vec{k}^2 \left(
 \mathfrak{F}\left[\partial_{c} f_{\mathrm{non}}\right] -
 2\rho(c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)\right)}
 {1 + \Delta t M\left[2\rho\vec{k}^2(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} +
