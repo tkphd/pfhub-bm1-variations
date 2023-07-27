@@ -74,15 +74,23 @@ class Evolver:
 
     def solve(self, dt):
         # semi-implicit discretization of the PFHub equation of motion
-        self.c_old[:] = self.c
+        self.c_hat_old[:] = self.c_hat
+        residuals = []
+        res = 1.0
+        sweep = 0
 
-        self.dfdc_hat[:] = self.alias_mask * np.fft.fft2(dfdc_nonlinear(self.c))
+        while sweep < 20 and res > 1e-3:
+            self.c_old[:] = self.c
+            self.dfdc_hat[:] = self.alias_mask * np.fft.fft2(dfdc_nonlinear(self.c))
 
-        self.c_hat[:] = (self.c_hat - dt * M * self.Ksq * self.dfdc_hat) \
-                      / (1 + dt * M * self.Ksq * self.linear_coefficient)
+            self.c_hat[:] = (self.c_hat_old - dt * M * self.Ksq * self.dfdc_hat) \
+                / (1 + dt * M * self.Ksq * self.linear_coefficient)
 
-        self.c[:] = np.fft.ifft2(self.c_hat).real
+            self.c[:] = np.fft.ifft2(self.c_hat).real
 
-        res = LA.norm(self.c - self.c_old)
+            res = LA.norm(self.c - self.c_old)
+            residuals.append(res)
 
-        return self.free_energy(), res
+            sweep += 1
+
+        return self.free_energy(), residuals

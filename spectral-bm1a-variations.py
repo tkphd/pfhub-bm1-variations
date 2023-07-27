@@ -18,9 +18,40 @@ from tqdm import tqdm
 
 from spectral import Evolver
 
-startTime = time.time()
+def progression():
+    """
+    Generate a sequence of numbers that progress in logarithmic space:
+    1, 2,.. 10, 20,.. 100, 200,.. 1000, 2000, etc.
+    but *don't* store them all in memory!
+    """
+    delta = 1
+    value = 0
+    while True:
+        value += delta
+        yield value
+        if (value == 10*delta):
+            delta = value
 
-# Read command line arguments
+
+def start_report():
+    e_file = f"{iodir}/ene.csv"
+    header = "runtime,time,free_energy,residual,sweeps"
+    with open(e_file, "w") as fh:
+        fh.write(f"{header}\n")
+
+
+def write_and_report(t, c, energies):
+    np.savez_compressed(f"{iodir}/c_{t:08.0f}.npz", c=c)
+
+    if energies is not None:
+        with open(f"{iodir}/ene.csv", "a") as fh:
+            writer = csv.writer(fh)
+            writer.writerows(energies)
+
+
+# Start the clock, read CLI flags
+
+startTime = time.time()
 
 parser = ArgumentParser()
 
@@ -32,7 +63,7 @@ args = parser.parse_args()
 dx = args.dx
 dt = args.dt
 
-iodir = f"{args.iodir}/dx{dx:4.02f}_dt{dt:4.02f}"
+iodir = f"{args.iodir}/dt{dt:4.02f}_dx{dx:4.02f}"
 
 if not os.path.exists(iodir):
     print("Saving output to", iodir)
@@ -40,7 +71,7 @@ if not os.path.exists(iodir):
 
 # System parameters & kinetic coefficients
 
-t_final = 1.5e6
+t_final = 1e5
 L = 200.
 N = np.rint(L / dx).astype(int)
 
@@ -81,44 +112,6 @@ ic_peri = lambda x, y: \
       * np.cos(Ap[3] * x - Bp[3] * y)
     )
 
-
-def progression():
-    """
-    Generate a sequence of numbers that progress in logarithmic space:
-    1, 2,.. 10, 20,.. 100, 200,.. 1000, 2000, etc.
-    but *don't* store them all in memory!
-    """
-    delta = 1
-    value = 0
-    while True:
-        value += delta
-        yield value
-        if (value == 10*delta):
-            delta = value
-
-
-def start_report():
-    e_file = f"{iodir}/ene.csv"
-    header = "runtime,time,free_energy,error"
-    with open(e_file, "w") as fh:
-        fh.write(f"{header}\n")
-
-
-def write_and_report(t, c, energies):
-    np.savez_compressed(f"{iodir}/c_{t:08.0f}.npz", c=c)
-
-    if energies is not None:
-        with open(f"{iodir}/ene.csv", "a") as fh:
-            writer = csv.writer(fh)
-            writer.writerows(energies)
-
-# === prepare to evolve ===
-
-t = 0.0
-energies = None
-
-start_report()
-
 # === generate the initial condition ===
 
 x = np.linspace(0., L, N)
@@ -126,9 +119,12 @@ X, Y = np.meshgrid(x, x, indexing="xy")
 
 c = ic(X, Y)
 
+# === prepare to evolve ===
+
+t = 0.0
 evolve_ch = Evolver(c, dx)
 
-# write initial energy
+start_report()
 
 res = 1e-10
 energies = [[time.time() - startTime, t, evolve_ch.free_energy(), res]]
@@ -157,7 +153,7 @@ for check in CheckpointStepper(start=t,
 
         elapsed = time.time() - startTime
 
-        energies.append([elapsed, t, nrg, err])
+        energies.append([elapsed, t, nrg, err[-1], len(err)])
 
         _ = step.succeeded()
 

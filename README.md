@@ -97,6 +97,28 @@ $$
 c_{\beta}^2) + \kappa \vec{k}^4\right]}
 $$
 
+## Sweep for Non-Linearity
+
+The non-linear term on the r.h.s. of the discretized equation of motion can
+make convergence of the solution elusive. The non-linearity can be smoothed out
+by sweeping the solver, rather than directly solving just once.
+
+``` python
+def step_in_time(dt):
+    denom = 1 + dt * M * Ksq * (2 * ρ * (α**2 + 4 * α * β + β**2) + κ * Ksq)
+    c_old = c
+    c_hat_old = c_hat
+    residual = 1.0
+
+    while residual > 1e-3:
+        dfdc_hat = fft2(dfdc_non(c))
+        c_hat = (c_hat_old - dt * M * Ksq * dfdc_hat) / denom
+        c = ifft2(c_hat)
+        residual = np.linalg.norm(c - c_old)
+        
+    t += dt
+```
+
 ## References
 
 * _Coarsening kinetics from a variable-mobility Cahn-Hilliard equation:
