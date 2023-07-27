@@ -88,7 +88,7 @@ class Evolver:
         self.c_old[:] = self.c
 
         # iteratively update c in place
-        while sweep < 50 and res > 1e-3:
+        while sweep < 100 and res > 1e-4:
             self.dfdc_hat[:] = self.alias_mask * np.fft.fft2(dfdc_nonlinear(self.c_sweep))
 
             self.c_hat[:] = (self.c_hat_old - dt * M * self.Ksq * self.dfdc_hat) \

@@ -18,6 +18,13 @@ from tqdm import tqdm
 
 from spectral import Evolver
 
+# Start the clock
+startTime = time.time()
+
+def elapsed(clock):
+    return np.round(time.time() - clock, 2)
+
+
 def progression():
     """
     Generate a sequence of numbers that progress in logarithmic space:
@@ -48,10 +55,7 @@ def write_and_report(t, c, energies):
             writer = csv.writer(fh)
             writer.writerows(energies)
 
-
-# Start the clock, read CLI flags
-
-startTime = time.time()
+# Read command-line flags
 
 parser = ArgumentParser()
 
@@ -126,7 +130,7 @@ evolve_ch = Evolver(c, dx)
 
 start_report()
 
-res = 1e-10
+res = 1e-5
 energies = [[time.time() - startTime, t, evolve_ch.free_energy(), res, 0]]
 
 write_and_report(t, c, energies)
@@ -151,9 +155,7 @@ for check in CheckpointStepper(start=t,
 
         t += dt
 
-        elapsed = time.time() - startTime
-
-        energies.append([elapsed, t, energy, error, sweeps])
+        energies.append([elapsed(startTime), t, energy, error, sweeps])
 
         _ = step.succeeded()
 
