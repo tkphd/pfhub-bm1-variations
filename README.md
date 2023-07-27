@@ -64,20 +64,20 @@ $$
 This can be separated into a linear part:
 
 $$
-2\rho \left[(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} + c_{\beta}^2) c -
+\partial_{c} f_{\mathrm{lin}} = 2\rho \left[(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} + c_{\beta}^2) c -
 (c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)\right]
 $$
 
 and a non-linear remainder:
 
 $$
-2\rho\left(2 c^3 - 3(c_{\alpha} + c_{\beta}) c^2\right)
+\partial_{c} f_{\mathrm{non}} = 2\rho\left(2 c^3 - 3(c_{\alpha} + c_{\beta}) c^2\right)
 $$
 
 It's straight-forward to transform the linear expression:
 
 $$
-\mathfrak{F}\left[\left(\frac{\partial f}{\partial c}\right)_{\mathrm{lin}}\right] =
+\mathfrak{F}\left[\partial_{c} f_{\mathrm{lin}}\right] =
 2\rho \left((c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} + c_{\beta}^2) \hat{c} -
 (c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)
 \right)
@@ -92,7 +92,7 @@ and rearranging, we arrive at the spectral discretization for this problem:
 
 $$
 \hat{c}_{t+\Delta t} = \frac{\hat{c}_{t} - \Delta t M \vec{k}^2 \left(
-\mathfrak{F}\left[\left(\frac{\partial f}{\partial c}\right)_{\mathrm{non}}\right] -
+\mathfrak{F}\left[\partial_{c} f_{\mathrm{non}}\right] -
 2\rho(c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)\right)}
 {1 + \Delta t M\left[2\rho\vec{k}^2(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} +
 c_{\beta}^2) + \kappa \vec{k}^4\right]}
