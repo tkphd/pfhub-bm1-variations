@@ -127,7 +127,7 @@ evolve_ch = Evolver(c, dx)
 start_report()
 
 res = 1e-10
-energies = [[time.time() - startTime, t, evolve_ch.free_energy(), res]]
+energies = [[time.time() - startTime, t, evolve_ch.free_energy(), res, 0]]
 
 write_and_report(t, c, energies)
 
@@ -147,13 +147,13 @@ for check in CheckpointStepper(start=t,
     for step in pbar:
         dt = step.size
 
-        nrg, err = evolve_ch.solve(dt)
+        energy, error, sweeps = evolve_ch.solve(dt)
 
         t += dt
 
         elapsed = time.time() - startTime
 
-        energies.append([elapsed, t, nrg, err[-1], len(err)])
+        energies.append([elapsed, t, energy, error, sweeps])
 
         _ = step.succeeded()
 

@@ -43,12 +43,15 @@ def free_energy(c, c_hat, K, dx):
 class Evolver:
     def __init__(self, c, dx):
         self.dx = dx
+        self.dt_old = None
 
         self.c = c.copy()
-        self.c_old = np.empty_like(self.c)
-
         self.c_hat = np.fft.fft2(self.c)
+
+        self.c_old = np.empty_like(self.c)
         self.c_hat_old = np.empty_like(self.c_hat)
+
+        self.c_sweep = np.empty_like(self.c)
 
         self.dfdc_hat = np.empty_like(self.c_hat)
 
@@ -74,23 +77,31 @@ class Evolver:
 
     def solve(self, dt):
         # semi-implicit discretization of the PFHub equation of motion
-        self.c_hat_old[:] = self.c_hat
-        residuals = []
         res = 1.0
         sweep = 0
 
-        while sweep < 20 and res > 1e-3:
-            self.c_old[:] = self.c
-            self.dfdc_hat[:] = self.alias_mask * np.fft.fft2(dfdc_nonlinear(self.c))
+        # take a stab at the "right" solution
+        qdt = 1.0 if self.dt_old is None else dt / self.dt_old
+        self.c_sweep = (1 + qdt) * self.c - qdt * self.c_old  # c + qdt * (c - c_old)
+
+        self.c_hat_old[:] = self.c_hat  # required (first term on r.h.s.)
+        self.c_old[:] = self.c
+
+        # iteratively update c in place
+        while sweep < 50 and res > 1e-3:
+            self.dfdc_hat[:] = self.alias_mask * np.fft.fft2(dfdc_nonlinear(self.c_sweep))
 
             self.c_hat[:] = (self.c_hat_old - dt * M * self.Ksq * self.dfdc_hat) \
                 / (1 + dt * M * self.Ksq * self.linear_coefficient)
 
             self.c[:] = np.fft.ifft2(self.c_hat).real
 
-            res = LA.norm(self.c - self.c_old)
-            residuals.append(res)
+            res = LA.norm(self.c - self.c_sweep)
+
+            self.c_sweep[:] = self.c
 
             sweep += 1
 
-        return self.free_energy(), residuals
+        self.dt_old = dt
+
+        return self.free_energy(), res, sweep

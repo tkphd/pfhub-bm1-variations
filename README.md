@@ -101,23 +101,75 @@ $$
 
 The non-linear term on the r.h.s. of the discretized equation of motion can
 make convergence of the solution elusive. The non-linearity can be smoothed out
-by sweeping the solver, rather than directly solving just once.
+by sweeping the solver, rather than directly solving just once. Consider the
+explicit (single-pass) pseudocode marching forward in time:
 
 ``` python
-def step_in_time(dt):
-    denom = 1 + dt * M * Ksq * (2 * ρ * (α**2 + 4 * α * β + β**2) + κ * Ksq)
-    c_old = c
-    c_hat_old = c_hat
-    residual = 1.0
+def march_in_time(c, t, dt):
+    c_hat = FFT(c)  # "old" value in k-space
+    dfdc_hat = fft2(dfdc_non(c))  # non-linear piece in k-space
+    
+    c_hat_new = (c_hat - dt * M * Ksq * dfdc_hat) \
+           / (1 + dt * M * Ksq * (2 * ρ * (α**2 + 4 * α * β + β**2) + κ * Ksq))
+
+    c_new = ifft2(c_hat_new)  # "new" field value
+
+    t += dt
+    return c_new
+```
+
+The sweeping method involves inserting increasingly good "guesses" for the
+argument to the non-linear piece. At first, we use the "old" value, then solve
+the same set of equations using the previous round's output as the new input.
+The residual (norm of the difference between the current and previous guess)
+measures progress towards convergence: the smaller, the better.
+
+``` python
+def sweep_in_time(c, t, dt):
+    c_hat = FFT(c)  # "old" value in k-space
+    c_sweep = c       # field value to sweep at a fixed point in time
 
     while residual > 1e-3:
-        dfdc_hat = fft2(dfdc_non(c))
-        c_hat = (c_hat_old - dt * M * Ksq * dfdc_hat) / denom
-        c = ifft2(c_hat)
-        residual = np.linalg.norm(c - c_old)
-        
+        dfdc_hat = fft2(dfdc_non(c_sweep))
+        c_hat_new = (c_hat - dt * M * Ksq * dfdc_hat) \
+           / (1 + dt * M * Ksq * (2 * ρ * (α**2 + 4 * α * β + β**2) + κ * Ksq))
+        c_new = iFFT(c_hat_new)
+
+        residual = np.linalg.norm(c_new - c_sweep)
+
+        c_prev = c_new
+
     t += dt
+    
+    return c_new
 ```
+
+A slight tweak to this method starts with a (hopefully) better initial guess:
+using the values of the previous two steps, we can use the current and old
+field values to extrapolate the expected new field value. This increases the
+saved state of the machinery, but should produce faster convergence:
+
+``` python
+def sweep_in_less_time(c, c_old, t, dt, dt_old):
+    c_hat = FFT(c)  # "old" value in k-space
+    slope = (c - c_old) / dt_old  # point-slope line formula
+    c_sweep = c_old + slope * dt  # extrapolated field value
+
+    while residual > 1e-3:
+        dfdc_hat = fft2(dfdc_non(c_sweep))
+        c_hat_new = (c_hat - dt * M * Ksq * dfdc_hat) \
+           / (1 + dt * M * Ksq * (2 * ρ * (α**2 + 4 * α * β + β**2) + κ * Ksq))
+        c_new = iFFT(c_hat_new)
+
+        residual = np.linalg.norm(c_new - c_sweep)
+
+        c_sweep = c_new
+
+    t += dt
+    
+    return c_new
+```
+
 
 ## References
 
