@@ -76,8 +76,8 @@ class Evolver:
 
 
     def residual(self, numer_coeff, denom_coeff):
-        return LA.norm(np.abs(denom_coeff * self.c_hat_prev - self.c_hat_old
-                              + numer_coeff * self.dfdc_hat).real)
+        return LA.norm(np.abs(self.c_hat_old - numer_coeff * self.dfdc_hat
+                              - denom_coeff * self.c_hat_prev).real)
 
 
     def sweep(self, numer_coeff, denom_coeff):
@@ -108,7 +108,7 @@ class Evolver:
         denom_coeff = 1 + dt * M * self.Ksq * self.linear_coefficient # denominator
 
         # iteratively update c in place
-        while sweep < 200 and residual > 1e-4:
+        while sweep < 200 and residual > 1e-3:
             residual = self.sweep(numer_coeff, denom_coeff)
 
             if not np.isfinite(residual):

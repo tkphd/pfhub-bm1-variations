@@ -56,30 +56,35 @@ which can be expanded out to
 
 $$
 \frac{\partial f}{\partial c} = 2\rho\left[
-2 c^3 - 3(c_{\alpha} + c_{\beta}) c^2 + (c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} +
-c_{\beta}^2) c - (c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)
-\right]
+2 c^3 - 3(c_{\alpha} + c_{\beta}) c^2 +
+(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} +
+c_{\beta}^2) c - (c_{\alpha}^2 c_{\beta} +
+c_{\alpha} c_{\beta}^2)\right]
 $$
 
 This can be separated into a linear part:
 
 $$
-\partial_{c} f_{\mathrm{lin}} = 2\rho \left[(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} + c_{\beta}^2) c -
-(c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)\right]
+\partial_{c} f_{\mathrm{linear}} = 2\rho
+\left[(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} +
+c_{\beta}^2) c - (c_{\alpha}^2 c_{\beta} +
+c_{\alpha} c_{\beta}^2)\right]
 $$
 
 and a non-linear remainder:
 
 $$
-\partial_{c} f_{\mathrm{non}} = 2\rho\left(2 c^3 - 3(c_{\alpha} + c_{\beta}) c^2\right)
+\partial_{c} f_{\mathrm{nonlin}} = 2\rho\left(2 c^3 -
+3(c_{\alpha} + c_{\beta}) c^2\right)
 $$
 
 It's straight-forward to transform the linear expression:
 
 $$
-\mathfrak{F}\left[\partial_{c} f_{\mathrm{lin}}\right] =
-2\rho \left[(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} + c_{\beta}^2) \hat{c} -
-(c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)\right]
+\mathfrak{F}\left[\partial_{c} f_{\mathrm{linear}}\right] =
+2\rho \left[(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} +
+c_{\beta}^2) \hat{c} - (c_{\alpha}^2 c_{\beta} +
+c_{\alpha} c_{\beta}^2)\right]
 $$
 
 The non-linear remainder must be evaluated in real space, then transformed into
@@ -90,11 +95,12 @@ then assigns the linear terms to the "new" timestep. Doing so, grouping terms,
 and rearranging, we arrive at the spectral discretization for this problem:
 
 $$
-\widehat{c_{t + \Delta t}} = \frac{\widehat{c_{t}} - \Delta t M \vec{k}^2 \left(
-\mathfrak{F}\left[\partial_{c} f_{\mathrm{non}}\right] -
-2\rho(c_{\alpha}^2 c_{\beta} + c_{\alpha} c_{\beta}^2)\right)}
-{1 + \Delta t M\left[2\rho\vec{k}^2(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} +
-c_{\beta}^2) + \kappa \vec{k}^4\right]}
+\widehat{c_{t + \Delta t}} = \frac{\widehat{c_{t}} -
+\Delta t M \vec{k}^2 \left(\mathfrak{F}\left[\partial_{c}
+f_{\mathrm{nonlin}}\right] - 2\rho(c_{\alpha}^2 c_{\beta} +
+c_{\alpha} c_{\beta}^2)\right)}
+{1 + \Delta t M\left[2\rho\vec{k}^2(c_{\alpha}^2 +
+4 c_{\alpha} c_{\beta} + c_{\beta}^2) + \kappa \vec{k}^4\right]}
 $$
 
 ## Sweep for Non-Linearity
@@ -105,70 +111,56 @@ by sweeping the solver, rather than directly solving just once. Consider the
 explicit (single-pass) pseudocode marching forward in time:
 
 ``` python
-def march_in_time(c, t, dt):
-    c_hat = FFT(c)  # "old" value in k-space
-    dfdc_hat = fft2(dfdc_non(c))  # non-linear piece in k-space
-    
-    c_hat_new = (c_hat - dt * M * Ksq * dfdc_hat) \
-           / (1 + dt * M * Ksq * (2 * ρ * (α**2 + 4 * α * β + β**2) + κ * Ksq))
+def march_in_time(c, dt):
+    c_hat_old = FFT(c)  # "old" value in k-space
+    dfdc_hat = FFT(dfdc_nonlin(c))  # non-linear piece in k-space
+    numer_coeff = dt * M * Ksq  # coefficient of non-linear terms
+    denom_coeff = 1 + dt * M * Ksq * (2 * ρ * (α**2 + 4 * α * β + β**2) + κ * Ksq)
 
-    c_new = ifft2(c_hat_new)  # "new" field value
+    c_hat = (c_hat_old - numer_coeff * dfdc_hat) / denom_coeff
 
-    t += dt
+    c_new = IFFT(c_hat)  # "new" field value
+
     return c_new
 ```
 
 The sweeping method involves inserting increasingly good "guesses" for the
 argument to the non-linear piece. At first, we use the "old" value, then solve
 the same set of equations using the previous round's output as the new input.
-The residual (norm of the difference between the current and previous guess)
-measures progress towards convergence: the smaller, the better.
-
-``` python
-def sweep_in_time(c, t, dt):
-    c_hat = FFT(c)  # "old" value in k-space
-    c_sweep = c       # field value to sweep at a fixed point in time
-
-    while residual > 1e-3:
-        dfdc_hat = fft2(dfdc_non(c_sweep))
-        c_hat_new = (c_hat - dt * M * Ksq * dfdc_hat) \
-           / (1 + dt * M * Ksq * (2 * ρ * (α**2 + 4 * α * β + β**2) + κ * Ksq))
-        c_new = iFFT(c_hat_new)
-
-        residual = np.linalg.norm(c_new - c_sweep)
-
-        c_prev = c_new
-
-    t += dt
-    
-    return c_new
-```
-
-A slight tweak to this method starts with a (hopefully) better initial guess:
+A slight tweak to this method starts with a better initial guess (h/t @reid-a):
 using the values of the previous two steps, we can use the current and old
 field values to extrapolate the expected new field value. This increases the
 saved state of the machinery, but should produce faster convergence:
 
 ``` python
-def sweep_in_less_time(c, c_old, t, dt, dt_old):
-    c_hat = FFT(c)  # "old" value in k-space
-    slope = (c - c_old) / dt_old  # point-slope line formula
-    c_sweep = c_old + slope * dt  # extrapolated field value
+def sweep_in_less_time(c, c_old, dt):
+    c_new = 2 * c - c_old    # extrapolated field value, fixed in time
+    c_hat_old = FFT(c)       # "old" field in k-space
+    c_hat_prev = FFT(c_old)  # "previous sweep" field in k-space
+    numer_coeff = dt * M * Ksq  # coefficient of non-linear terms
+    denom_coeff = 1 + dt * M * Ksq * (2 * ρ * (α**2 + 4 * α * β + β**2) + κ * Ksq)
+    residual = 1.0
 
-    while error > 1e-3:
-        dfdc_hat = fft2(dfdc_non(c_sweep))
-        c_hat_new = (c_hat - dt * M * Ksq * dfdc_hat) \
-           / (1 + dt * M * Ksq * (2 * ρ * (α**2 + 4 * α * β + β**2) + κ * Ksq))
-        c_new = iFFT(c_hat_new)
+    while residual > 1e-3:
+        dfdc_hat = fft2(dfdc_nonlin(c_new))
+        c_hat = (c_hat_old - numer_coeff * dfdc_hat) / denom_coeff
 
-        error = np.linalg.norm(c_new - c_sweep)
+        residual = np.linalg.norm(
+            np.abs(c_hat_old - numer_coeff * dfdc_hat
+                             - denom_coeff * c_hat_prev)).real)
 
-        c_sweep = c_new
+        c_hat_prev = c_hat_curr
+        c_new = IFFT(c_hat_curr)
 
-    t += dt
-    
     return c_new
 ```
+
+Each sweep computes a "new" estimate of the field value using the previous
+value of the non-linear terms. Think of the residual as plugging the
+previous estimate of the field value in: this computes how inaccurate the
+previous sweep result was. Once the loop reaches a residual below some
+tolerance, further iterations are a waste of cycles: the "new" solution has
+converged.
 
 ## References
 
