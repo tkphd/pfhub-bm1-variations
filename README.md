@@ -155,13 +155,13 @@ def sweep_in_less_time(c, c_old, t, dt, dt_old):
     slope = (c - c_old) / dt_old  # point-slope line formula
     c_sweep = c_old + slope * dt  # extrapolated field value
 
-    while residual > 1e-3:
+    while error > 1e-3:
         dfdc_hat = fft2(dfdc_non(c_sweep))
         c_hat_new = (c_hat - dt * M * Ksq * dfdc_hat) \
            / (1 + dt * M * Ksq * (2 * ρ * (α**2 + 4 * α * β + β**2) + κ * Ksq))
         c_new = iFFT(c_hat_new)
 
-        residual = np.linalg.norm(c_new - c_sweep)
+        error = np.linalg.norm(c_new - c_sweep)
 
         c_sweep = c_new
 

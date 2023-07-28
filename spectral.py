@@ -43,12 +43,12 @@ def free_energy(c, c_hat, K, dx):
 class Evolver:
     def __init__(self, c, dx):
         self.dx = dx
-        self.dt_old = None
 
         self.c = c.copy()
         self.c_hat = np.fft.fft2(self.c)
+        self.c_hat_prev = self.c_hat.copy()
 
-        self.c_old = np.empty_like(self.c)
+        self.c_old = self.c.copy()
         self.c_hat_old = np.empty_like(self.c_hat)
 
         self.c_sweep = np.empty_like(self.c)
@@ -75,33 +75,47 @@ class Evolver:
         return free_energy(self.c, self.c_hat, self.K, self.dx)
 
 
+    def residual(self, numer_coeff, denom_coeff):
+        return LA.norm(np.abs(denom_coeff * self.c_hat_prev - self.c_hat_old
+                              + numer_coeff * self.dfdc_hat).real)
+
+
+    def sweep(self, numer_coeff, denom_coeff):
+        self.c_hat_prev[:] = self.c_hat
+
+        self.dfdc_hat[:] = self.alias_mask * np.fft.fft2(dfdc_nonlinear(self.c_sweep))
+
+        self.c_hat[:] = (self.c_hat_old - numer_coeff * self.dfdc_hat) / denom_coeff
+
+        self.c[:] = np.fft.ifft2(self.c_hat).real
+
+        return self.residual(numer_coeff, denom_coeff)
+
+
     def solve(self, dt):
         # semi-implicit discretization of the PFHub equation of motion
-        res = 1.0
+        residual = 1.0
         sweep = 0
 
         # take a stab at the "right" solution
-        qdt = 1.0 if self.dt_old is None else dt / self.dt_old
-        self.c_sweep = (1 + qdt) * self.c - qdt * self.c_old  # c + qdt * (c - c_old)
+        # Thanks to @reid-a for contributing this idea!
+        self.c_sweep[:] = 2 * self.c - self.c_old  # reasonable guess
 
         self.c_hat_old[:] = self.c_hat  # required (first term on r.h.s.)
         self.c_old[:] = self.c
 
+        numer_coeff = dt * M * self.Ksq  # used in the numerator
+        denom_coeff = 1 + dt * M * self.Ksq * self.linear_coefficient # denominator
+
         # iteratively update c in place
-        while sweep < 100 and res > 1e-4:
-            self.dfdc_hat[:] = self.alias_mask * np.fft.fft2(dfdc_nonlinear(self.c_sweep))
+        while sweep < 200 and residual > 1e-4:
+            residual = self.sweep(numer_coeff, denom_coeff)
 
-            self.c_hat[:] = (self.c_hat_old - dt * M * self.Ksq * self.dfdc_hat) \
-                / (1 + dt * M * self.Ksq * self.linear_coefficient)
-
-            self.c[:] = np.fft.ifft2(self.c_hat).real
-
-            res = LA.norm(self.c - self.c_sweep)
+            if not np.isfinite(residual):
+                raise ValueError("Residual is NAN!")
 
             self.c_sweep[:] = self.c
 
             sweep += 1
 
-        self.dt_old = dt
-
-        return self.free_energy(), res, sweep
+        return self.free_energy(), residual, sweep
