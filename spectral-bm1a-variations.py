@@ -10,8 +10,10 @@
 
 from argparse import ArgumentParser
 import csv
+import glob
 import numpy as np
 import os
+from parse import parse
 from steppyngstounes import CheckpointStepper, FixedStepper
 import time
 
@@ -122,19 +124,33 @@ ic_phat = lambda x, y: ζ + ϵ * tophat(x) * tophat(y) * ripples(x, y, A0, B0)
 
 ic_peri = lambda x, y: ζ + ϵ * ripples(x, y, Ap, Bp)
 
-c = ic_orig(X, Y)
+# === generate or load microstructure ===
+
+npz_files = sorted(glob.glob(f"{iodir}/c_*.npz"))
+resuming = (len(npz_files) != 0)
+
+if resuming:
+    _, t = parse("{}/c_{}.npz", npz_files[-1])
+    with open(npz_files[-1], "r") as fh:
+        npz = np.load(fh)
+        c = npz.c
+else:
+    start_report()
+    t = 0.0
+    c = ic_orig(X, Y)
 
 # === prepare to evolve ===
 
-t = 0.0
 evolve_ch = Evolver(c, dx)
 
-start_report()
+if resuming:
+    residual = 1.0
+    energies = []
+else:
+    residual = 1e-5
+    energies = [[time.time() - startTime, t, evolve_ch.free_energy(), residual, 0]]
 
-residual = 1e-5
-energies = [[time.time() - startTime, t, evolve_ch.free_energy(), residual, 0]]
-
-write_and_report(t, c, energies)
+    write_and_report(t, c, energies)
 
 if not cluster_job:
     tq_fmt = "{desc}: {percentage:3.0f}%|{bar}| {n:>7,d}/{total:<7,d} {elapsed} + {remaining}{postfix}"
