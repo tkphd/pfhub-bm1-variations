@@ -13,11 +13,11 @@ import csv
 import glob
 import numpy as np
 import os
-from parse import parse
+import pandas as pd
 from steppyngstounes import CheckpointStepper, FixedStepper
 import time
 
-cluster_job = ("SLURM_PROCID" in os.environ)
+cluster_job = bool("SLURM_PROCID" in os.environ)
 
 if not cluster_job:
     from tqdm import tqdm
@@ -27,7 +27,7 @@ from spectral import Evolver
 # Start the clock
 startTime = time.time()
 
-def elapsed(clock):
+def stopwatch(clock):
     return np.round(time.time() - clock, 2)
 
 
@@ -84,7 +84,7 @@ if not os.path.exists(iodir):
 
 # System parameters & kinetic coefficients
 
-t_final = 2e6
+t_final = 50_000
 L = 200.
 N = np.rint(L / dx).astype(int)
 
@@ -130,14 +130,18 @@ npz_files = sorted(glob.glob(f"{iodir}/c_*.npz"))
 resuming = (len(npz_files) != 0)
 
 if resuming:
-    _, t = parse("{}/c_{}.npz", npz_files[-1])
+    print(f"Resuming from {npz_files[-1]}")
+    ene_df = pd.read_csv(f"{iodir}/ene.csv")
+    t = ene_df["time"].iloc[-1]
+    startTime - ene_df["runtime"].iloc[-1]
     with open(npz_files[-1], "r") as fh:
         npz = np.load(fh)
         c = npz.c
+    del ene_df
 else:
     start_report()
     t = 0.0
-    c = ic_orig(X, Y)
+    c = ic_phat(X, Y)
 
 # === prepare to evolve ===
 
@@ -150,26 +154,21 @@ else:
     residual = 1e-5
     energies = [[time.time() - startTime, t, evolve_ch.free_energy(), residual, 0]]
 
-    write_and_report(t, c, energies)
+    write_and_report(t, evolve_ch.c, energies)
 
-if not cluster_job:
-    tq_fmt = "{desc}: {percentage:3.0f}%|{bar}| {n:>7,d}/{total:<7,d} {elapsed} + {remaining}{postfix}"
 
 for check in CheckpointStepper(start=t,
                                stops=progression(),
                                stop=t_final):
     energies = []
+    stepper = FixedStepper(start=check.begin, stop=check.end, size=dt)
 
-    if cluster_job:
+    if not cluster_job:
         # TQDM isn't appropriate when stdout redirects to a file.
-        stepper = FixedStepper(start=check.begin, stop=check.end, size=dt)
-    else:
-        # Progress bars are delightful for local execution.
-        stepper = tqdm(FixedStepper(start=check.begin, stop=check.end, size=dt),
-                    desc=f"t->{check.end:7,.0f}",
-                    total=np.ceil((check.end - check.begin) / dt).astype(int),
-                    bar_format=tq_fmt,
-                    ncols=79)
+        stepper = tqdm(stepper,
+                       desc=f"t->{check.end:7,.0f}",
+                       total=int((check.end - check.begin) / dt),
+                       ncols=79)
 
     for step in stepper:
         dt = step.size
@@ -178,7 +177,7 @@ for check in CheckpointStepper(start=t,
 
         t += dt
 
-        energies.append([elapsed(startTime), t, energy, residual, sweeps])
+        energies.append([stopwatch(startTime), t, energy, residual, sweeps])
 
         _ = step.succeeded()
 

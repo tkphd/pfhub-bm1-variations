@@ -1,6 +1,9 @@
 *~
+*.ipynb_checkpoints
+
 *.log
 *.png
-*.ipynb_checkpoints
-fipy
-pymks
+
+papers
+periodic
+spectral

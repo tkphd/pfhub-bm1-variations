@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import numba
 import numpy as np
 import numpy.linalg as LA
 
@@ -37,6 +38,10 @@ def c_y(c_hat, K):
 
 
 def free_energy(c, c_hat, K, dx):
+    """
+    Cf. Trefethen Eqn. 12.5: typical integration is sub-spatially
+    accurate, but this trapezoid rule retains accuracy.
+    """
     return dx**2 * (κ/2 * (c_x(c_hat, K)**2 + c_y(c_hat, K)**2) + fbulk(c)).sum()
 
 
@@ -108,7 +113,7 @@ class Evolver:
         denom_coeff = 1 + dt * M * self.Ksq * self.linear_coefficient # denominator
 
         # iteratively update c in place
-        while sweep < 200 and residual > 1e-3:
+        while sweep < 1000 and residual > 1e-3:
             residual = self.sweep(numer_coeff, denom_coeff)
 
             if not np.isfinite(residual):
@@ -119,3 +124,75 @@ class Evolver:
             sweep += 1
 
         return self.free_energy(), residual, sweep
+
+
+# === Spectral Interpolation Functions ===
+
+def Sn(x, h):
+    """
+    Sn is periodic, so it will be faster to pre-generate a hash table
+    if we are able to use integer indices |xf - xc|
+    """
+    return h * np.sin(np.pi * x / h) / (2*np.pi * np.tan(x / 2))
+
+
+@numba.njit(parallel=True)
+def interpolate(coarse_data, fine_mesh, table):
+    """
+    coarse_data: data in coarse mesh, sized (mx,mx)
+    fine_mesh: zeroed array, size (nx, nx) where nx > mx
+    """
+
+    Lk = 2 * np.pi
+    N_coarse = coarse_data.shape[0]
+    h_coarse = Lk / N_coarse
+    N_fine = fine_mesh.shape[0]
+    h_fine = Lk / N_fine
+
+    for i in numba.prange(N_fine):
+        for j in numba.prange(N_fine):
+            x_fine = i * h_fine
+            y_fine = j * h_fine
+            for k in range(N_coarse):
+                x_coarse = h_coarse * k
+                idx = int(np.rint(np.abs(x_fine - x_coarse) * N_fine / Lk))
+                s_x = table[idx]
+                for l in range(N_coarse):
+                    y_coarse = h_coarse * l
+                    idy = int(np.rint(np.abs(y_fine - y_coarse) * N_fine / Lk))
+                    s_y = table[idy]
+                    fine_mesh[i, j] += coarse_data[k, l] * s_x * s_y
+
+    return np.copy(fine_mesh) # return a copy of the array
+
+
+def generate_hash_table(Nf, Nc):
+    """
+    Create the hash table, given
+    - Nf, Nc are even and domain is reasonably well refined
+    - hc/hf is an integer
+    """
+
+    Lk = 2 * np.pi
+
+    hf = Lk / Nf  # fine resolution
+    hc = Lk / Nc  # coarse resolution
+
+    if not (hc/hf).is_integer(): # I'm assuming hc/hf > 1 to avoid rounding errors
+        raise ValueError(f"hc/hf={hc/hf} is not an integer!")
+
+    table = np.zeros(Nf, dtype=float)
+
+    for xf in np.arange(0, Lk - hf/2, hf):
+        for xc in np.arange(0, Lk, hc):
+            dx = np.abs(xf - xc)
+            i = int(np.rint(dx * Nf / Lk))
+            tmp = 1 if dx < 1e-6 else Sn(dx, hc)
+
+            # If i is close for two different values of dx, then it's a collision.
+            if not np.isclose(table[i], 0.0) and not np.isclose(table[i], tmp):
+               raise KeyError(f"Collision @ {i}, {tmp} != {table[i]}")
+
+            table[i] = tmp
+
+    return table

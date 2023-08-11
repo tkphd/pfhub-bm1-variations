@@ -1,195 +1,89 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
-# Plot free energy and memory consumption
-
-from warnings import filterwarnings
-filterwarnings("ignore", category=UserWarning)
-
+import gc
+import glob
 import matplotlib.pyplot as plt
-import pandas
-from os import path
+import numpy as np
+import os
+import pandas as pd
+from parse import parse
+from tqdm import tqdm
 
-from argparse import ArgumentParser
+# load community submissions of note
 
-variants = {
-    "orig": "original",
-    "peri": "periodic",
-    "zany": "timbrous"
-}
+subs = {}
 
-figsize = (6, 5)
-ressize = (11, 6)
-dpi=600
+for result in sorted(glob.glob("../1a_*_*.csv")):
+    label = str(result).replace("../1a_", "").replace(".csv", "")
+    subs[label] = pd.read_csv(result)
 
-parser = ArgumentParser(
-    prog = 'plot_energy',
-    description = 'Plot results of PFHub BM1 in FiPy with periodic initial condition variations'
-)
+# load and plot spectral data
 
-parser.add_argument("-d", "--directory",
-                    default=".",
-                    help="simulation output directory")
-parser.add_argument("-p", "--platform",
-                    default="FiPy",
-                    help="software platform")
-parser.add_argument("-s", "--sweeps",
-                    default=None,
-                    type=int,
-                    help="number of sweeps per solver step")
+jobs = {}
 
-args = parser.parse_args()
+dirs = sorted(glob.glob("dt?.????_dx?.????"))
 
-marker_style = dict(marker='.',
-                    linestyle='-',
-                    linewidth=0.5,
-                    markersize=1,
-                    alpha=0.6)
+for iodir in dirs:
+    dt, dx = parse("dt{}_dx{}", iodir)
+    dt = str(dt)
+    if dt in jobs.keys():
+        jobs[dt].append(iodir)
+    else:
+        jobs[dt] = [iodir]
 
-res_style = dict(marker='.',
-                 linewidth=0,
-                 markersize=1,
-                 alpha=1)
+fig_cols = 2
+fig_rows = 2
 
-def read_and_plot(iodir, variant):
-    data_file = "{}/energy.csv".format(iodir)
-    if not path.exists(data_file):
-        data_file = "{}/free_energy.csv.gz".format(iodir)
+fig, axs = plt.subplots(fig_rows, fig_cols, figsize=(4*fig_cols+1, 4*fig_rows),
+                        constrained_layout=True)
+axs = axs.flatten()
 
-    if path.exists(data_file):
-        df = pandas.read_csv(data_file)
-        df.time[0] = 0.95 * df.time[1]  # no zeros in log-log plot
+for idx, (dt, dirs) in enumerate(jobs.items()):
+    print("")
+    ax = axs[idx]
+    ax.set_title(f"$\Delta t = {dt}$")
 
-        if not "mem_KB" in df.columns.values:
-            df["mem_KB"] = df.mem_MB.apply(lambda x: 1024 * x)
+    ax.set_xlabel("Time $t$ / [a.u.]")
+    ax.set_ylabel("Free energy $\\mathcal{F}$ / [a.u.]")
+    ax.set_xlim([1.0, 2e5])
 
-        clock = "wall_time" if "wall_time" in df.columns.values else "time"
+    # plot community uploads of note
+    for label, df in subs.items():
+        ax.loglog(df["time"], df["free_energy"], color="silver")
 
-        plt.figure(1)
-        plt.loglog(df.time, df.free_energy, label=variants[variant])
+    for zord, iodir in enumerate(dirs):
+        _, dx = parse("dt{:6.4f}_dx{:6.4f}", iodir)
 
-        plt.figure(2)
-        plt.loglog(df[clock], df.mem_KB, label=variants[variant])
+        ene = f"{iodir}/ene.csv"
 
-        if "energy_rate" in df.columns.values:
-            plt.figure(3)
-            plt.loglog(df.time, df.energy_rate, label=variants[variant])
+        df = pd.read_csv(ene)
+        label = f"$\\Delta x = {dx:5.03f}$"
+        ax.loglog(df["time"], df["free_energy"], label=label, zorder=10.0-zord)
 
-        return (int(df[clock].iloc[-1]), int(df.mem_KB.iloc[-1]))
+        pbar = tqdm(sorted(glob.glob(f"{iodir}/c_*.npz")))
+        for npz in pbar:
+            pbar.set_description(iodir)
+            img = npz.replace("npz", "png")
 
+            if not os.path.exists(img):
+                c = np.load(npz)
+                if np.all(np.isfinite(c["c"])):
+                    _, _, t = parse("dt{}_dx{}/c_{}.npz", npz)
+                    t = int(t)
 
-def residual_plot(ax, iodir, variant, sweeps, rtol=1e-3):
-    data_file = "{}/residual.csv.gz".format(iodir)
-    tmax = 0.0
+                    plt.figure(2, figsize=(10, 8))
+                    plt.title(f"$\\Delta x={dx},\\ \\Delta t={dt}\\ @\\ t={t:,d}$")
+                    plt.xlabel("$x$ / [a.u.]")
+                    plt.ylabel("$y$ / [a.u.]")
+                    plt.colorbar(plt.imshow(c["c"], interpolation=None, origin="lower"))
+                    plt.savefig(img, dpi=400, bbox_inches="tight")
 
-    if path.exists(data_file):
-        df = pandas.read_csv(data_file)
+                    plt.close()
 
-        ax.set_xlabel(r"time $t$ / [a.u.]")
-        ax.set_ylabel(r"Res / Tol")
-        ax.set_ylim([1e-1, 2e2])
+        gc.collect()
 
-        tvals = df.time + df.timestep * (100 + df.sweep)/100
+    ax.legend(loc="best", fontsize=8)
 
-        ax.semilogy(tvals, df.residual / rtol,
-                    label=variants[variant], fillstyle=None, **marker_style, zorder=1)
+# Render to PNG
 
-        ini = df[df.sweep == 0]
-        fin = df[df.sweep == sweeps - 1]
-
-        ax.semilogy(ini.time,
-                    ini.residual / rtol,
-                    label="first",
-                    **res_style, zorder=1)
-        ax.semilogy(fin.time + fin.timestep * (100 + fin.sweep)/100,
-                    fin.residual / rtol,
-                    label="last", color="black",
-                    **res_style, zorder=1)
-
-        ax.legend(loc="upper right", ncol=3)
-
-        tmax = max(tmax, tvals.max())
-
-    return tmax
-
-def plot_all(prefix=".", platform="FiPy", suffix=""):
-    # create energy & memory plots for each variant,
-    # and co-plot all energy results
-
-    nrg_image = f"{prefix}/energy{suffix}.png"
-    mem_image = f"{prefix}/memory{suffix}.png"
-    drv_image = f"{prefix}/drive{suffix}.png"
-    res_image = f"{prefix}/residual{suffix}.png"
-
-    # prepare energy plot
-    plt.figure(1, figsize=figsize)
-    plt.title("BM 1a: {}".format(platform))
-    plt.xlabel(r"simulation time $t$ / [a.u.]")
-    plt.ylabel(r"Free energy $\mathcal{F}$ / [J/m³]")
-
-    # prepare memory plot
-    plt.figure(2, figsize=figsize)
-    plt.title("BM 1a: {}".format(platform))
-    plt.xlabel(r"wall time $t$ / [s]")
-    plt.ylabel("Memory / [MB]")
-
-    # prepare driving force plot
-    plt.figure(3, figsize=figsize)
-    plt.title("BM 1a: {}".format(platform))
-    plt.xlabel(r"simulation time $t$ / [a.u.]")
-    plt.ylabel(r"Driving force $\frac{1}{V}\frac{\delta\mathcal{F}}{\delta t}$ / [J/m³]")
-
-    # plot the energy data
-    max_mem = [0.0, 0.0]
-    for variant in variants.keys():
-        iodir = f"{prefix}/{variant}{suffix}"
-        df_mem = read_and_plot(iodir, variant)
-        max_mem =[max(max_mem[i], df_mem[i]) for i in range(2)]
-
-    # save the plots
-    plt.figure(1)
-    plt.legend(loc="best")
-    plt.savefig(nrg_image, bbox_inches="tight", dpi=dpi)
-    plt.close()
-
-    plt.figure(2)
-    plt.annotate("⌈time⌉: {:7,} s\n ⌈mem⌉: {:7,} MB".format(max_mem[0], max_mem[1]//1024),
-                 (0.02*max_mem[0], 0.75*max_mem[1]))
-    plt.legend(loc="best")
-    plt.savefig(mem_image, bbox_inches="tight", dpi=dpi)
-    plt.close()
-
-    try:
-        plt.figure(3)
-        plt.legend(loc="best")
-        plt.savefig(drv_image, bbox_inches="tight", dpi=dpi)
-        plt.close()
-    except ImportError:
-        pass
-
-    # plot the residual data, if available
-    haveResiduals = any([path.exists(f"{prefix}/{variant}{suffix}/residual.csv.gz")
-                         for variant in variants.keys()])
-    if haveResiduals:
-        fig, axs = plt.subplots(len(variants.keys()), 1, figsize=ressize)
-        fig.suptitle("BM 1a: {}".format(platform))
-        tmax = 0.0
-
-        for i, variant in enumerate(variants.keys()):
-            iodir = f"{prefix}/{variant}{suffix}"
-            tmax = max(tmax,
-                       residual_plot(axs[i], iodir, variant, args.sweeps))
-
-        for ax in axs:
-            # ax.set_xlim([0, min(tmax, 10_001)])
-            ax.set_xlim([0, tmax])
-
-        plt.savefig(res_image, bbox_inches="tight", dpi=dpi)
-        plt.close()
-
-
-if __name__ == "__main__":
-    # read_and_plot(iodir)
-    suffix = "" if args.sweeps is None \
-        else f"-{args.sweeps:02d}sw"
-    plot_all(args.directory, args.platform, suffix)
+plt.savefig("energy.png", dpi=400, bbox_inches="tight")
