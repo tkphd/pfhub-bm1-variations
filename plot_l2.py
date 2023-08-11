@@ -38,7 +38,7 @@ def sim_details(dir):
     return dx, Nx, t_max
 
 parser = ArgumentParser()
-parser.add_argument("dt", help="Timestep of interest", type=float)
+parser.add_argument("-t", "--dt", help="Timestep of interest", type=float)
 args = parser.parse_args()
 
 t = 0

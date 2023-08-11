@@ -15,17 +15,45 @@ import numpy as np
 import os
 import pandas as pd
 from steppyngstounes import CheckpointStepper, FixedStepper
+import sys
 import time
 
 cluster_job = bool("SLURM_PROCID" in os.environ)
-
 if not cluster_job:
     from tqdm import tqdm
+
+sys.path.append(os.path.dirname(__file__))
 
 from spectral import Evolver
 
 # Start the clock
 startTime = time.time()
+
+# System parameters & kinetic coefficients
+
+t_final = 50_000
+L = 200.
+
+# Read command-line flags
+
+parser = ArgumentParser()
+
+parser.add_argument("variant", help="variant type", choices=["original",
+                                                             "periodic",
+                                                             "tophat"])
+parser.add_argument("-x", "--dx", help="mesh resolution", type=float)
+parser.add_argument("-t", "--dt", help="time resolution", type=float)
+
+args = parser.parse_args()
+dx = args.dx
+dt = args.dt
+
+iodir = f"{args.variant}/dt{dt:6.04f}_dx{dx:6.04f}"
+
+if not os.path.exists(iodir):
+    print("Saving output to", iodir)
+    os.mkdir(iodir)
+
 
 def stopwatch(clock):
     return np.round(time.time() - clock, 2)
@@ -64,38 +92,15 @@ def write_and_report(t, c, energies):
             writer.writerows(energies)
 
 
-# Read command-line flags
-
-parser = ArgumentParser()
-
-parser.add_argument("iodir", help="root directory for output files")
-parser.add_argument("dx", help="mesh spacing", type=float)
-parser.add_argument("dt", help="timestep", type=float)
-
-args = parser.parse_args()
-dx = args.dx
-dt = args.dt
-
-iodir = f"{args.iodir}/dt{dt:6.04f}_dx{dx:6.04f}"
-
-if not os.path.exists(iodir):
-    print("Saving output to", iodir)
-    os.mkdir(iodir)
-
-# System parameters & kinetic coefficients
-
-t_final = 50_000
-L = 200.
-N = np.rint(L / dx).astype(int)
-
-x = np.linspace(0., L, N)
-X, Y = np.meshgrid(x, x, indexing="xy")
+# === generate the initial condition ===
 
 ζ = 0.5   # mean composition
 ϵ = 0.01  # noise amplitude
 λ = 0.04 * L  # width of periodic boundary shell
 
-# === generate the initial condition ===
+N = np.rint(L / dx).astype(int)
+x = np.linspace(0., L, N)
+X, Y = np.meshgrid(x, x, indexing="xy")
 
 # published cosine coefficients
 A0 = np.array([0.105, 0.130, 0.025, 0.070])  # 1 / L * np.array([21., 26., 5.0, 14.])
@@ -124,6 +129,15 @@ ic_phat = lambda x, y: ζ + ϵ * tophat(x) * tophat(y) * ripples(x, y, A0, B0)
 
 ic_peri = lambda x, y: ζ + ϵ * ripples(x, y, Ap, Bp)
 
+if args.variant == "original":
+    ic = ic_orig
+elif args.variant == "periodic":
+    ic = ic_peri
+elif args.variant == "tophat":
+    ic = ic_phat
+else:
+    raise ValueError("Unknown variant {args.variant}")
+
 # === generate or load microstructure ===
 
 npz_files = sorted(glob.glob(f"{iodir}/c_*.npz"))
@@ -134,14 +148,13 @@ if resuming:
     ene_df = pd.read_csv(f"{iodir}/ene.csv")
     t = ene_df["time"].iloc[-1]
     startTime - ene_df["runtime"].iloc[-1]
-    with open(npz_files[-1], "r") as fh:
-        npz = np.load(fh)
-        c = npz.c
+    with np.load(npz_files[-1]) as npz:
+        c = npz["c"]
     del ene_df
 else:
     start_report()
     t = 0.0
-    c = ic_phat(X, Y)
+    c = ic(X, Y)
 
 # === prepare to evolve ===
 
