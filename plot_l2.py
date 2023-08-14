@@ -60,46 +60,61 @@ goldir = dirs[0]  # smallest dx comes first
 gold_h, gold_N, gold_T = sim_details(goldir)
 hf = Lk / gold_N
 
-print("Loading gold standard: ", end="")
-watch = time.time()
 with np.load(f"{goldir}/c_{t:08d}.npz") as npz:
     gold_c0 = npz["c"]
-print(elapsed(watch))
 
 for jobdir in dirs[1:]:
     print(f"Interpolating {jobdir}")
 
     job_h, job_N, job_T = sim_details(jobdir)
     refined = f"{jobdir}/dx{gold_h:6.04f}_c_{t:08d}.npz"
+    prehash = f"{goldir}/hash_{gold_N}_{job_N}.npz"
+    table = None
+    job_refined = None
 
     if not os.path.exists(refined):
-        print("    Loading data: ", end="")
-        watch = time.time()
-        with np.load(f"{jobdir}/c_{t:08d}.npz") as npz:
-            job_c0 = npz["c"]
-        print(elapsed(watch))
+        print("    Hashing: ", end="")
 
-        print("    Hashtable-ing: ", end="")
-        watch = time.time()
-        table = generate_hash_table(gold_N, job_N)
-        print(elapsed(watch))
+        if not os.path.exists(refined):
+            try:
+                if not (gold_N / job_N).is_integer():
+                    raise ValueError("Mesh sizes are mismatched!")
+                watch = time.time()
+                table = generate_hash_table(gold_N, job_N)
+                print(elapsed(watch), "s")
 
-        fine_mesh = np.zeros((gold_N, gold_N), dtype=float)
+                if np.all(np.isfinite(table)):
+                    np.savez_compressed(prehash, table=table)
+                else:
+                    table = None
+                    raise ValueError("Collision in hash table!")
+            except ValueError as e:
+                print(e)
+        else:
+            with np.load(prehash) as npz:
+                table = npz["table"]
 
-        print("    Interpolating: ", end="")
-        watch = time.time()
-        job_refined = interpolate(job_c0, fine_mesh, table)
-        print(elapsed(watch))
+        if table is not None:
+            print("    Intrpng: ", end="")
+            fine_mesh = np.zeros((gold_N, gold_N), dtype=float)
 
-        np.savez_compressed(refined, c=job_refined)
+            with np.load(f"{jobdir}/c_{t:08d}.npz") as npz:
+                job_c0 = npz["c"]
+
+            watch = time.time()
+            job_refined = interpolate(job_c0, fine_mesh, table)
+            print(elapsed(watch), "s")
+
+            np.savez_compressed(refined, c=job_refined)
     else:
         with np.load(refined) as npz:
             job_refined = npz["c"]
 
-    # L2 of zeroth step
-    resolution.append(job_N)
-    norm.append(LA.norm(gold_c0 - job_refined))
-    print(f"    L2: {norm[-1]}")
+    if job_refined is not None:
+        # L2 of zeroth step
+        resolution.append(job_N)
+        norm.append(LA.norm(gold_c0 - job_refined))
+        print(f"    L2: {norm[-1]:9.03e}")
 
     gc.collect()
 

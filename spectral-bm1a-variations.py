@@ -141,7 +141,7 @@ else:
 # === generate or load microstructure ===
 
 npz_files = sorted(glob.glob(f"{iodir}/c_*.npz"))
-resuming = (len(npz_files) != 0)
+resuming = (len(npz_files) != 0) and os.path.exists(f"{iodir}/ene.csv")
 
 if resuming:
     print(f"Resuming from {npz_files[-1]}")
@@ -165,7 +165,7 @@ if resuming:
     energies = []
 else:
     residual = 1e-5
-    energies = [[time.time() - startTime, t, evolve_ch.free_energy(), residual, 0]]
+    energies = [[time.time() - startTime, t, evolve_ch.free_energy(), residual, 1]]
 
     write_and_report(t, evolve_ch.c, energies)
 

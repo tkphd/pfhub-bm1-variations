@@ -128,6 +128,7 @@ class Evolver:
 
 # === Spectral Interpolation Functions ===
 
+@numba.njit
 def Sn(x, h):
     """
     Sn is periodic, so it will be faster to pre-generate a hash table
@@ -143,30 +144,38 @@ def interpolate(coarse_data, fine_mesh, table):
     fine_mesh: zeroed array, size (nx, nx) where nx > mx
     """
 
-    Lk = 2 * np.pi
+    # Lk = 2 * np.pi
     N_coarse = coarse_data.shape[0]
-    h_coarse = Lk / N_coarse
+    # h_coarse = Lk / N_coarse
     N_fine = fine_mesh.shape[0]
-    h_fine = Lk / N_fine
+    # h_fine = Lk / N_fine
+    N_ratio = N_fine // N_coarse
 
     for i in numba.prange(N_fine):
         for j in numba.prange(N_fine):
-            x_fine = i * h_fine
-            y_fine = j * h_fine
+            # x_fine = i * h_fine
+            # y_fine = j * h_fine
+            fval = 0.0
             for k in range(N_coarse):
-                x_coarse = h_coarse * k
-                idx = int(np.rint(np.abs(x_fine - x_coarse) * N_fine / Lk))
+                # x_coarse = h_coarse * k
+                # idx = int(np.rint(np.abs(x_fine - x_coarse) * N_fine / Lk))
+                idx = abs(i - N_ratio * k)
                 s_x = table[idx]
                 for l in range(N_coarse):
-                    y_coarse = h_coarse * l
-                    idy = int(np.rint(np.abs(y_fine - y_coarse) * N_fine / Lk))
-                    s_y = table[idy]
-                    fine_mesh[i, j] += coarse_data[k, l] * s_x * s_y
+                    # y_coarse = h_coarse * l
+                    # idy = int(np.rint(np.abs(y_fine - y_coarse) * N_fine / Lk))
+                    idy = abs(j - N_ratio * l)
+                    # s_y = table[idy]
+                    fval += coarse_data[k, l] * s_x * table[idy]
+
+            fine_mesh[i, j] = fval
 
     return np.copy(fine_mesh) # return a copy of the array
 
 
-def generate_hash_table(Nf, Nc):
+# N.B.: Numba-fying this function strips the exceptions: don't do it!
+@numba.njit(parallel=True)
+def generate_hash_table(N_fine, N_coarse):
     """
     Create the hash table, given
     - Nf, Nc are even and domain is reasonably well refined
@@ -174,25 +183,28 @@ def generate_hash_table(Nf, Nc):
     """
 
     Lk = 2 * np.pi
+    hf = Lk / N_fine
+    hc = Lk / N_coarse
 
-    hf = Lk / Nf  # fine resolution
-    hc = Lk / Nc  # coarse resolution
+    N_ratio = N_fine // N_coarse
 
-    if not (hc/hf).is_integer(): # I'm assuming hc/hf > 1 to avoid rounding errors
-        raise ValueError(f"hc/hf={hc/hf} is not an integer!")
+    table = np.zeros(N_fine, dtype=float)
 
-    table = np.zeros(Nf, dtype=float)
-
-    for xf in np.arange(0, Lk - hf/2, hf):
-        for xc in np.arange(0, Lk, hc):
-            dx = np.abs(xf - xc)
-            i = int(np.rint(dx * Nf / Lk))
-            tmp = 1 if dx < 1e-6 else Sn(dx, hc)
+    # for xf in np.arange(0, Lk - hf/2, hf):
+    for i in numba.prange(N_fine - 1):
+        # for xc in np.arange(0, Lk, hc):
+        for k in numba.prange(N_coarse):
+            # dx = np.abs(xf - xc)
+            idx = abs(i - N_ratio * k)
+            # idx = int(np.rint(dx * N_fine / Lk))
+            tmp = 1.0 if idx == 0 else Sn(hf * idx, hc)
+            # tmp = 1.0 if dx < 1e-6 else Sn(dx, hc)
 
             # If i is close for two different values of dx, then it's a collision.
-            if not np.isclose(table[i], 0.0) and not np.isclose(table[i], tmp):
-               raise KeyError(f"Collision @ {i}, {tmp} != {table[i]}")
-
-            table[i] = tmp
+            if not np.isclose(table[idx], 0.0) and not np.isclose(table[idx], tmp):
+                # raise KeyError(f"Collision @ {idx}, {tmp} != {table[idx]}")
+                table[idx] = np.nan
+            else:
+                table[idx] = tmp
 
     return table
