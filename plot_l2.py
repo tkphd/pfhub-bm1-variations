@@ -63,7 +63,7 @@ hf = Lk / gold_N
 with np.load(f"{goldir}/c_{t:08d}.npz") as npz:
     gold_c0 = npz["c"]
 
-for jobdir in dirs[1:]:
+for jobdir in np.flip(np.array(dirs[1:])):
     print(f"Interpolating {jobdir}")
 
     job_h, job_N, job_T = sim_details(jobdir)
@@ -111,10 +111,11 @@ for jobdir in dirs[1:]:
             job_refined = npz["c"]
 
     if job_refined is not None:
+        print("    L2: ", end="")
         # L2 of zeroth step
         resolution.append(job_N)
-        norm.append(LA.norm(gold_c0 - job_refined))
-        print(f"    L2: {norm[-1]:9.03e}")
+        norm.append(gold_h * LA.norm(gold_c0 - job_refined))
+        print(f"{norm[-1]:9.03e}")
 
     gc.collect()
 

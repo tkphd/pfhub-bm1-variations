@@ -144,18 +144,13 @@ def interpolate(coarse_data, fine_mesh, table):
     fine_mesh: zeroed array, size (nx, nx) where nx > mx
     """
 
-    # Lk = 2 * np.pi
     N_coarse = coarse_data.shape[0]
-    # h_coarse = Lk / N_coarse
     N_fine = fine_mesh.shape[0]
-    # h_fine = Lk / N_fine
     N_ratio = N_fine // N_coarse
 
     for i in numba.prange(N_fine):
         for j in numba.prange(N_fine):
-            # x_fine = i * h_fine
-            # y_fine = j * h_fine
-            fval = 0.0
+            fine_mesh[i, j] = 0.0
             for k in range(N_coarse):
                 # x_coarse = h_coarse * k
                 # idx = int(np.rint(np.abs(x_fine - x_coarse) * N_fine / Lk))
@@ -165,10 +160,9 @@ def interpolate(coarse_data, fine_mesh, table):
                     # y_coarse = h_coarse * l
                     # idy = int(np.rint(np.abs(y_fine - y_coarse) * N_fine / Lk))
                     idy = abs(j - N_ratio * l)
-                    # s_y = table[idy]
-                    fval += coarse_data[k, l] * s_x * table[idy]
+                    s_y = table[idy]
 
-            fine_mesh[i, j] = fval
+                    fine_mesh[i, j] += s_x * s_y * coarse_data[k, l]
 
     return np.copy(fine_mesh) # return a copy of the array
 
@@ -182,9 +176,8 @@ def generate_hash_table(N_fine, N_coarse):
     - hc/hf is an integer
     """
 
-    Lk = 2 * np.pi
-    hf = Lk / N_fine
-    hc = Lk / N_coarse
+    hf = 2 * np.pi / N_fine
+    hc = 2 * np.pi / N_coarse
 
     N_ratio = N_fine // N_coarse
 
@@ -192,12 +185,16 @@ def generate_hash_table(N_fine, N_coarse):
 
     # for xf in np.arange(0, Lk - hf/2, hf):
     for i in numba.prange(N_fine - 1):
+        xf = i * hf
         # for xc in np.arange(0, Lk, hc):
         for k in numba.prange(N_coarse):
-            # dx = np.abs(xf - xc)
+            xc = k * hc
+            dx = np.abs(xf - xc)
             idx = abs(i - N_ratio * k)
             # idx = int(np.rint(dx * N_fine / Lk))
-            tmp = 1.0 if idx == 0 else Sn(hf * idx, hc)
+            tmp = 1.0
+            if not np.isclose(dx, 0.0):
+                tmp = Sn(dx, hc)
             # tmp = 1.0 if dx < 1e-6 else Sn(dx, hc)
 
             # If i is close for two different values of dx, then it's a collision.
