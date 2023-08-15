@@ -123,7 +123,7 @@ class Evolver:
 
             sweep += 1
 
-        return self.free_energy(), residual, sweep
+        return residual, sweep
 
 
 # === Spectral Interpolation Functions ===

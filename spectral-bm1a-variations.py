@@ -38,9 +38,8 @@ L = 200.
 
 parser = ArgumentParser()
 
-parser.add_argument("variant", help="variant type", choices=["original",
-                                                             "periodic",
-                                                             "tophat"])
+parser.add_argument("variant", help="variant type",
+                    choices=["original", "periodic", "tophat"])
 parser.add_argument("-x", "--dx", help="mesh resolution", type=float)
 parser.add_argument("-t", "--dt", help="time resolution", type=float)
 
@@ -78,7 +77,7 @@ def progression():
 
 def start_report():
     e_file = f"{iodir}/ene.csv"
-    header = "runtime,time,free_energy,residual,sweeps"
+    header = "runtime,time,free_energy"
     with open(e_file, "w") as fh:
         fh.write(f"{header}\n")
 
@@ -185,17 +184,13 @@ for check in CheckpointStepper(start=t,
 
     for step in stepper:
         dt = step.size
-
-        energy, residual, sweeps = evolve_ch.solve(dt)
-
+        evolve_ch.solve(dt)
         t += dt
-
-        energies.append([stopwatch(startTime), t, energy, residual, sweeps])
-
         _ = step.succeeded()
 
     dt = step.want
 
+    energies.append([stopwatch(startTime), t, evolve_ch.free_energy()])
     write_and_report(t, evolve_ch.c, energies)
 
     if not np.all(np.isfinite(evolve_ch.c)):

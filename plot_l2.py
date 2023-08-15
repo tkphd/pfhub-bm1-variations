@@ -22,12 +22,22 @@ from parse import parse
 import sys
 import time
 
+# import from `spectral.py` in same folder as the script
 sys.path.append(os.path.dirname(__file__))
-
 from spectral import generate_hash_table, interpolate
+
+# parse command-line flags
+parser = ArgumentParser()
+parser.add_argument("-t", "--dt", help="Timestep of interest", type=float)
+parser.add_argument("-T", "--time", help="Time slice of interest", type=int)
+args = parser.parse_args()
+
+variant = os.getcwd()
+
 
 def elapsed(stopwatch):
     return np.round(time.time() - stopwatch, 2)
+
 
 def sim_details(dir):
     _, dx = parse("dt{:6.4f}_dx{:6.4f}", dir)
@@ -37,17 +47,13 @@ def sim_details(dir):
 
     return dx, Nx, t_max
 
-parser = ArgumentParser()
-parser.add_argument("-t", "--dt", help="Timestep of interest", type=float)
-args = parser.parse_args()
 
-t = 0
-Lk = 2 * np.pi
+png = f"norm_{variant}_dt{args.dt:6.04f}.png"
 
 plt.figure(1, figsize=(10,8))
-plt.title(f"$\Delta t = {args.dt}$")
+plt.title(f"IC: {variant}")
 plt.xlabel("Mesh size $N_x$ / [a.u.]")
-plt.ylabel("L2 norm $||\\Delta c||_2$ / [a.u.]")
+plt.ylabel("L2 norm, $||\\Delta c||_2$ / [a.u.]")
 
 resolution = []
 norm = []
@@ -58,70 +64,75 @@ dirs = sorted(glob.glob(f"dt{args.dt:6.04f}_dx?.????"))
 goldir = dirs[0]  # smallest dx comes first
 
 gold_h, gold_N, gold_T = sim_details(goldir)
+
+Lk = 2 * np.pi
 hf = Lk / gold_N
 
-with np.load(f"{goldir}/c_{t:08d}.npz") as npz:
-    gold_c0 = npz["c"]
+for t in np.unique([0, args.time]):
+    with np.load(f"{goldir}/c_{t:08d}.npz") as npz:
+        gold_c0 = npz["c"]
 
-for jobdir in np.flip(np.array(dirs[1:])):
-    print(f"Interpolating {jobdir}")
+    for jobdir in np.flip(np.array(dirs[1:])):
+        print(f"Interpolating {jobdir} @ t={t:,d}")
 
-    job_h, job_N, job_T = sim_details(jobdir)
-    refined = f"{jobdir}/dx{gold_h:6.04f}_c_{t:08d}.npz"
-    prehash = f"{goldir}/hash_{gold_N}_{job_N}.npz"
-    table = None
-    job_refined = None
-
-    if not os.path.exists(refined):
-        print("    Hashing: ", end="")
+        job_h, job_N, job_T = sim_details(jobdir)
+        refined = f"{jobdir}/dx{gold_h:6.04f}_c_{t:08d}.npz"
+        prehash = f"{goldir}/hash_{gold_N}_{job_N}.npz"
+        table = None
+        job_refined = None
 
         if not os.path.exists(refined):
-            try:
-                if not (gold_N / job_N).is_integer():
-                    raise ValueError("Mesh sizes are mismatched!")
+            print("    Hashing: ", end="")
+
+            if not os.path.exists(refined):
+                try:
+                    if not (gold_N / job_N).is_integer():
+                        raise ValueError("Mesh sizes are mismatched!")
+                    watch = time.time()
+                    table = generate_hash_table(gold_N, job_N)
+                    print(elapsed(watch), "s")
+
+                    if np.all(np.isfinite(table)):
+                        np.savez_compressed(prehash, table=table)
+                    else:
+                        table = None
+                        raise ValueError("Collision in hash table!")
+                except ValueError as e:
+                    print(e)
+            else:
+                with np.load(prehash) as npz:
+                    table = npz["table"]
+
+            if table is not None:
+                print("    Intrpng: ", end="")
+                fine_mesh = np.zeros((gold_N, gold_N), dtype=float)
+
+                with np.load(f"{jobdir}/c_{t:08d}.npz") as npz:
+                    job_c0 = npz["c"]
+
                 watch = time.time()
-                table = generate_hash_table(gold_N, job_N)
+                job_refined = interpolate(job_c0, fine_mesh, table)
                 print(elapsed(watch), "s")
 
-                if np.all(np.isfinite(table)):
-                    np.savez_compressed(prehash, table=table)
-                else:
-                    table = None
-                    raise ValueError("Collision in hash table!")
-            except ValueError as e:
-                print(e)
+                np.savez_compressed(refined, c=job_refined)
         else:
-            with np.load(prehash) as npz:
-                table = npz["table"]
+            with np.load(refined) as npz:
+                job_refined = npz["c"]
 
-        if table is not None:
-            print("    Intrpng: ", end="")
-            fine_mesh = np.zeros((gold_N, gold_N), dtype=float)
+        if job_refined is not None:
+            print("    L2: ", end="")
+            # L2 of zeroth step
+            resolution.append(job_N)
+            norm.append(gold_h * LA.norm(gold_c0 - job_refined))
+            print(f"{norm[-1]:9.03e}")
 
-            with np.load(f"{jobdir}/c_{t:08d}.npz") as npz:
-                job_c0 = npz["c"]
+        gc.collect()
 
-            watch = time.time()
-            job_refined = interpolate(job_c0, fine_mesh, table)
-            print(elapsed(watch), "s")
+    plt.loglog(resolution, norm, marker="o", label=f"$t={t:,d}$")
 
-            np.savez_compressed(refined, c=job_refined)
-    else:
-        with np.load(refined) as npz:
-            job_refined = npz["c"]
+    print()
 
-    if job_refined is not None:
-        print("    L2: ", end="")
-        # L2 of zeroth step
-        resolution.append(job_N)
-        norm.append(gold_h * LA.norm(gold_c0 - job_refined))
-        print(f"{norm[-1]:9.03e}")
-
-    gc.collect()
-
-
-png = f"norm_dt{args.dt:6.04f}_{t:08d}.png"
-plt.loglog(resolution, norm, marker="o")
+plt.legend(loc="best")
 plt.savefig(png, dpi=400, bbox_inches="tight")
 
 print(f"Saved image to {png}")
