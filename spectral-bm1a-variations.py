@@ -31,7 +31,7 @@ startTime = time.time()
 
 # System parameters & kinetic coefficients
 
-t_final = 50_000
+t_final = 1_000
 L = 200.
 
 # Read command-line flags
@@ -102,8 +102,8 @@ x = np.linspace(0., L, N)
 X, Y = np.meshgrid(x, x, indexing="xy")
 
 # published cosine coefficients
-A0 = np.array([0.105, 0.130, 0.025, 0.070])  # 1 / L * np.array([21., 26., 5.0, 14.])
-B0 = np.array([0.110, 0.087, 0.150, 0.020])  # 1 / L * np.array([22., 17., 30., 4.0])
+A0 = np.array([0.105, 0.130, 0.025, 0.070])
+B0 = np.array([0.110, 0.087, 0.150, 0.020])
 
 # periodic cosine coefficients
 Ap = np.pi / L * np.array([6.0, 8.0, 2.0, 4.0])
@@ -119,8 +119,8 @@ ripples = lambda x, y, A, B: np.cos(A[0] * x) * np.cos(B[0] * y) \
                            + np.cos(A[2] * x - B[2] * y) \
                            * np.cos(A[3] * x - B[3] * y)
 
-tophat = lambda x: 0.5 * (1 + np.tanh(np.pi * x / λ)) \
-                       * (1 + np.tanh(np.pi * (L - x) / λ)) - 1
+tophat = lambda x: 0.25 * (1 + np.tanh(np.pi * (x - λ) / λ)) \
+                        * (1 + np.tanh(np.pi * (L - x - λ) / λ))
 
 ic_orig = lambda x, y: ζ + ϵ * ripples(x, y, A0, B0)
 

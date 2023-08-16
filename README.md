@@ -4,18 +4,20 @@ Source code (Python and Jupyter) for PFHub BM 1a (periodic spinodal
 decomposition) using Steppyngstounes and a semi-implicit spectral solver,
 with variations on the initial condition.
 
-* **orig** is the "original" IC, not periodic at all
-* **peri** is a purely periodic IC, with coefficients
-  as close to the original as could be managed
-* **zany** is close to periodic, but not, to ward off
-  simple periodic pattern formation
+* **ori** is the "original" IC, not periodic at all
+* **per** is a purely periodic IC, with coefficients as close to the original
+  as could be managed
+* **hat** is the original IC everywhere except a zone within $w$ of the
+  boundary, where $c$ smoothly steps to ½.
 
 The coefficients are explored in `initial_conditions.py`.
+Some discussion and comparison of the initial conditions is in the `slides`
+folder.
 
 ## Discretization
 
 > Thanks to Nana Ofori-Opoku (McMaster University) for fruitful
-> exposition of the nuances of the spectral method for Cahn-Hilliard.
+> exposition of the spectral method for Cahn-Hilliard.
 
 Broadly, the Cahn-Hilliard equation of motion is
 
