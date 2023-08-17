@@ -52,12 +52,11 @@ class: center
 
 # Comparing Field Data
 
-While free energy evolution provides a reasonable spot check,  
-we can learn more about our models by comparing field values:
+<img alt="Free energies" src="../fig/periodic/energy.png" width="95%" />
+
+We can (should) learn more about our models by comparing field values:
 
 `\(\ell^2 = \left(\sum\limits_{x,y} (A - B)^2 \Delta x \Delta y \right)^{1/2}\)`
-
-To use this, both fields must share a common mesh.
 
 ---
 class: center
@@ -92,7 +91,7 @@ products, exponents become convolutions:
 `\(\begin{align*}
 \mathfrak{F}\left[\nabla c\right]   &= i\vec{k}\hat{c}\\
 \mathfrak{F}\left[\nabla^2 c\right] &= -\vec{k}^2 \hat{c}\\
-\mathfrak{F}\left[\mathrm{const}\right] &= \mathrm{const}
+\mathfrak{F}\left[\mathrm{const}\right] &= \delta
 \end{align*}\)`
 
 Transforming the equation of motion, we have
@@ -187,9 +186,11 @@ class: center
 
 # Results
 
-Using the perfectly periodic variant of BM 1a
+Using the perfectly periodic variant of BM 1a,  
+`\(\ell^2\)` for difference from `\(\Delta x = ⅛\)`
 
 <img alt="Results" src="../fig/rafi_results.png" width="98%" />
+_Rafi's work_
 
 ---
 
@@ -200,7 +201,11 @@ Using the perfectly periodic variant of BM 1a
 * The fine mesh size must be an integer multiple of the coarse data size.
 * As implemented, spectral interpolation is _slooooooow_
 
-<img alt="Free energies" src="../fig/periodic/energy.png" width="95%" />
+.center[
+<img alt="L2 norms" src="../fig/periodic/norm.png" width="50%" />
+
+_Trevor's work_
+]
 
 </textarea>
 <script src="https://remarkjs.com/downloads/remark-latest.min.js" type="text/javascript"></script>
