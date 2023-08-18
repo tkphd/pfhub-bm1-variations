@@ -24,7 +24,8 @@ import time
 
 # import from `spectral.py` in same folder as the script
 sys.path.append(os.path.dirname(__file__))
-from spectral import generate_hash_table, interpolate
+
+from spectral import SpectralInterpolant
 
 # parse command-line flags
 parser = ArgumentParser()
@@ -49,6 +50,13 @@ def sim_details(dir):
     return float(dx), int(Nx), int(t_max)
 
 
+def log_hn(h, n):
+    """
+    Support function for plotting 𝒪(hⁿ)
+    """
+    return n * np.log(h)
+
+
 # get "gold standard" info
 goldir = f"dt{args.dt:6.04f}_dx{args.dx:6.04f}"
 gold_h, gold_N, gold_T = sim_details(goldir)
@@ -58,6 +66,7 @@ if gold_N % 2 != 0:
 
 print(f"Candidate with h={gold_h} has reached t={gold_T}\n")
 
+
 # set output image file
 png = f"norm_{variant}_dt{args.dt:6.04f}.png"
 
@@ -66,7 +75,11 @@ plt.title(f"IC: {variant}")
 plt.xlabel("Mesh size $N_x$ / [a.u.]")
 plt.ylabel("L2 norm, $||\\Delta c||_2$ / [a.u.]")
 
-plt.ylim([1, 50])
+# plt.ylim([1, 50])
+
+# Interpolate!
+
+sinterp = SpectralInterpolant(gold_N, gold_N)
 
 jobs = {}
 
@@ -84,57 +97,26 @@ for t in times:
     norm = []
 
     with np.load(f"{goldir}/c_{t:08d}.npz") as npz:
-        gold_c0 = npz["c"]
+        gold_c = npz["c"]
 
     for jobdir, (job_h, job_N, job_T) in jobs.items():
         print(f"Interpolating {jobdir} @ t={t:,d}")
 
-        refined = f"{jobdir}/dx{gold_h:6.04f}_c_{t:08d}.npz"
-        prehash = f"{goldir}/hash_{gold_N}_{job_N}.npz"
-
-        table = None
+        refined = f"{jobdir}/k_{t:08d}_h{gold_h:6.04f}.npz"
         job_refined = None
 
         if not os.path.exists(refined):
-            print("    Hashing: ", end="")
-
-            if not os.path.exists(refined):
-                try:
-                    N_ratio = gold_N / job_N
-
-                    if not N_ratio.is_integer():
-                        raise ValueError("Mesh sizes are mismatched!")
-                    elif job_N % 2 != 0:
-                        raise ValueError("Mesh size is not even!")
-                    else:
-                        watch = time.time()
-                        table = generate_hash_table(gold_N, job_N)
-                        print(elapsed(watch), "s")
-
-                        if np.all(np.isfinite(table)):
-                            np.savez_compressed(prehash, table=table)
-                        else:
-                            table = None
-                            raise ValueError("Collision in hash table!")
-                except ValueError as e:
-                    print(e)
-            else:
-                with np.load(prehash) as npz:
-                    table = npz["table"]
-
             try:
-                if table is not None:
-                    print("    Intrpng: ", end="")
-                    job_refined = np.zeros((gold_N, gold_N), dtype=float)
+                job_refined = np.zeros((gold_N, gold_N), dtype=float)
 
-                    with np.load(f"{jobdir}/c_{t:08d}.npz") as npz:
-                        job_c0 = npz["c"]
+                with np.load(f"{jobdir}/c_{t:08d}.npz") as npz:
+                    job_c = npz["c"]
 
-                    watch = time.time()
-                    interpolate(job_c0, job_refined, table)
-                    print(elapsed(watch), "s")
+                watch = time.time()
+                job_refined = sinterp.upsample(job_c)
 
-                    np.savez_compressed(refined, c=job_refined)
+                np.savez_compressed(refined, c=job_refined)
+
             except FileNotFoundError:
                 job_refined = None
         else:
@@ -143,16 +125,31 @@ for t in times:
 
         if job_refined is not None:
             print("    L2: ", end="")
-            # L2 of zeroth step
             resolution.append(job_N)
-            norm.append(gold_h * LA.norm(gold_c0 - job_refined))
+            norm.append(gold_h * LA.norm(gold_c - job_refined))
             print(f"{norm[-1]:9.03e}")
+
+            refined_png = refined.replace("npz", "png")
+            if not os.path.exists(refined_png):
+                plt.figure(2, figsize=(10, 8))
+                plt.title(f"$\\Delta x={job_h},\\ \\Delta t={args.dt}\\ @\\ t={t:,d}$")
+                plt.xlabel("$x$ / [a.u.]")
+                plt.ylabel("$y$ / [a.u.]")
+                plt.colorbar(plt.imshow(job_refined, interpolation=None, origin="lower"))
+                plt.savefig(refined_png, dpi=400, bbox_inches="tight")
+                plt.close()
 
         gc.collect()
 
+    plt.figure(1)
     plt.loglog(resolution, norm, marker="o", label=f"$t={t:,d}$")
 
     print()
+
+
+h = np.linspace(2 * gold_h, 6.25, 100)
+plt.loglog(200/h, h**2, label=r"$\mathcal{O}(h^2)$")
+plt.loglog(200/h, h**4, label=r"$\mathcal{O}(h^4)$")
 
 plt.legend(loc="best")
 plt.savefig(png, dpi=400, bbox_inches="tight")

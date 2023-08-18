@@ -31,7 +31,7 @@ startTime = time.time()
 
 # System parameters & kinetic coefficients
 
-t_final = 10_000
+t_final = 50_000
 L = 200.
 
 # Read command-line flags
@@ -58,7 +58,7 @@ def stopwatch(clock):
     return np.round(time.time() - clock, 2)
 
 
-def progression():
+def progression(start=0):
     """
     Generate a sequence of numbers that progress in logarithmic space:
     1, 2,.. 10, 20,.. 100, 200,.. 1000, 2000, etc.
@@ -66,12 +66,12 @@ def progression():
 
     Thanks to @reid-a for contributing this generator.
     """
-    delta = 1
-    value = 0
+    value = start
+    delta = 1 if value == 0 else int(10**np.floor(np.log10(value)))
     while True:
         value += delta
         yield value
-        if (value == 10*delta):
+        if (value == 10 * delta):
             delta = value
 
 
@@ -176,7 +176,7 @@ else:
 
 
 for check in CheckpointStepper(start=t,
-                               stops=progression(),
+                               stops=progression(int(t)),
                                stop=t_final):
     energies = []
     stepper = FixedStepper(start=check.begin, stop=check.end, size=dt)

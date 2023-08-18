@@ -1,10 +1,11 @@
 *~
+*.#*
 *.ipynb_checkpoints
+*.nfs*
 .virtual_documents
 
 *.log
 *.png
 
 papers
-periodic
-spectral
+working
