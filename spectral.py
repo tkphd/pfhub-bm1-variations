@@ -50,15 +50,14 @@ class Evolver:
         self.dx = dx
 
         self.c = c.copy()
+        self.c_old = np.ones_like(self.c)
+        self.c_sweep = np.ones_like(self.c)
+
         self.c_hat = np.fft.fft2(self.c)
-        self.c_hat_prev = self.c_hat.copy()
+        self.c_hat_prev = np.ones_like(self.c_hat)
+        self.c_hat_old = self.c_hat.copy()
 
-        self.c_old = self.c.copy()
-        self.c_hat_old = np.empty_like(self.c_hat)
-
-        self.c_sweep = np.empty_like(self.c)
-
-        self.dfdc_hat = np.empty_like(self.c_hat)
+        self.dfdc_hat = np.ones_like(self.c_hat)
 
         # prepare auxiliary arrays
         k = 2 * np.pi * np.fft.fftfreq(self.c.shape[0], d=self.dx)
@@ -181,7 +180,7 @@ def generate_hash_table(N_fine, N_coarse):
     table = np.zeros(N_fine, dtype=float)
 
     # for xf in np.arange(0, Lk - hf/2, hf):
-    for i in numba.prange(N_fine):
+    for i in numba.prange(N_fine - 1):
         xf = i * hf
         # for xc in np.arange(0, Lk, hc):
         for k in numba.prange(N_coarse):
@@ -198,8 +197,8 @@ def generate_hash_table(N_fine, N_coarse):
 
             if not collision:
                 table[idx] = tmp
-            # else:
-            #     # raise KeyError(f"Collision @ {idx}, {tmp} != {table[idx]}")
-            #     table[idx] = np.nan
+            else:
+                # raise KeyError(f"Collision @ {idx}, {tmp} != {table[idx]}")
+                table[idx] = np.nan
 
     return table

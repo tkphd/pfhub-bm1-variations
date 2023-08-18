@@ -31,7 +31,7 @@ startTime = time.time()
 
 # System parameters & kinetic coefficients
 
-t_final = 1_000
+t_final = 10_000
 L = 200.
 
 # Read command-line flags
@@ -143,17 +143,23 @@ npz_files = sorted(glob.glob(f"{iodir}/c_*.npz"))
 resuming = (len(npz_files) != 0) and os.path.exists(f"{iodir}/ene.csv")
 
 if resuming:
-    print(f"Resuming from {npz_files[-1]}")
     ene_df = pd.read_csv(f"{iodir}/ene.csv")
-    t = ene_df["time"].iloc[-1]
-    startTime - ene_df["runtime"].iloc[-1]
+    print(ene_df.tail())
+    t = float(ene_df.time.iloc[-1])
+    startTime -= ene_df.runtime.iloc[-1]
     with np.load(npz_files[-1]) as npz:
         c = npz["c"]
-    del ene_df
+
+    print(f"Resuming from {npz_files[-1]} (t={t})")
+
 else:
     start_report()
     t = 0.0
     c = ic(X, Y)
+
+# Don't resume finished jobs.
+if t >= t_final or np.isclose(t, t_final):
+    sys.exit()
 
 # === prepare to evolve ===
 

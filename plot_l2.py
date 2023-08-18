@@ -28,9 +28,10 @@ from spectral import generate_hash_table, interpolate
 
 # parse command-line flags
 parser = ArgumentParser()
-parser.add_argument("--dx",   help="Candidate Gold Standard resolution", type=float)
-parser.add_argument("--dt",   help="Timestep of interest", type=float)
-parser.add_argument("--time", help="Time slice of interest", type=int)
+parser.add_argument("--dx",   type=float, help="Candidate Gold Standard resolution")
+parser.add_argument("--dt",   type=float, help="Timestep of interest")
+parser.add_argument("--time", type=int,   help="Time slice of interest",
+                              nargs="+")
 args = parser.parse_args()
 
 variant = os.path.basename(os.getcwd())
@@ -45,26 +46,27 @@ def sim_details(dir):
     slices = sorted(glob.glob(f"{dir}/c_*.npz"))
     _, t_max = parse("{}/c_{}.npz", slices[-1])
 
-    return dx, Nx, t_max
+    return float(dx), int(Nx), int(t_max)
 
+
+# get "gold standard" info
+goldir = f"dt{args.dt:6.04f}_dx{args.dx:6.04f}"
+gold_h, gold_N, gold_T = sim_details(goldir)
+
+if gold_N % 2 != 0:
+    raise ValueError("Reference mesh size is not even!")
+
+print(f"Candidate with h={gold_h} has reached t={gold_T}\n")
+
+# set output image file
+png = f"norm_{variant}_dt{args.dt:6.04f}.png"
 
 plt.figure(1, figsize=(10,8))
 plt.title(f"IC: {variant}")
 plt.xlabel("Mesh size $N_x$ / [a.u.]")
 plt.ylabel("L2 norm, $||\\Delta c||_2$ / [a.u.]")
 
-# set output image file
-png = f"norm_{variant}_dt{args.dt:6.04f}.png"
-
-# get "gold standard" info
-goldir = f"dt{args.dt:6.04f}_dx{args.dx:6.04f}"
-gold_h, gold_N, gold_T = sim_details(goldir)
-
-Lk = 2 * np.pi
-hf = Lk / gold_N
-
-resolution = []
-norm = []
+plt.ylim([1, 50])
 
 jobs = {}
 
@@ -73,7 +75,14 @@ for job in sorted(glob.glob(f"dt{args.dt:6.04f}_dx?.????")):
     if stats[0] > gold_h:
         jobs[job] = stats
 
-for t in np.unique([0, args.time]):
+times = np.unique(np.concatenate([np.array([0], dtype=int),
+                                  np.array(args.time, dtype=int)]))
+times = times[times <= gold_T]
+
+for t in times:
+    resolution = []
+    norm = []
+
     with np.load(f"{goldir}/c_{t:08d}.npz") as npz:
         gold_c0 = npz["c"]
 
@@ -95,8 +104,8 @@ for t in np.unique([0, args.time]):
 
                     if not N_ratio.is_integer():
                         raise ValueError("Mesh sizes are mismatched!")
-                    elif int(N_ratio) % 2 != 0:
-                        raise ValueError("Mesh sizes are unevenly matched!")
+                    elif job_N % 2 != 0:
+                        raise ValueError("Mesh size is not even!")
                     else:
                         watch = time.time()
                         table = generate_hash_table(gold_N, job_N)
@@ -113,18 +122,21 @@ for t in np.unique([0, args.time]):
                 with np.load(prehash) as npz:
                     table = npz["table"]
 
-            if table is not None:
-                print("    Intrpng: ", end="")
-                fine_mesh = np.zeros((gold_N, gold_N), dtype=float)
+            try:
+                if table is not None:
+                    print("    Intrpng: ", end="")
+                    job_refined = np.zeros((gold_N, gold_N), dtype=float)
 
-                with np.load(f"{jobdir}/c_{t:08d}.npz") as npz:
-                    job_c0 = npz["c"]
+                    with np.load(f"{jobdir}/c_{t:08d}.npz") as npz:
+                        job_c0 = npz["c"]
 
-                watch = time.time()
-                job_refined = interpolate(job_c0, fine_mesh, table)
-                print(elapsed(watch), "s")
+                    watch = time.time()
+                    interpolate(job_c0, job_refined, table)
+                    print(elapsed(watch), "s")
 
-                np.savez_compressed(refined, c=job_refined)
+                    np.savez_compressed(refined, c=job_refined)
+            except FileNotFoundError:
+                job_refined = None
         else:
             with np.load(refined) as npz:
                 job_refined = npz["c"]

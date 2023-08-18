@@ -9,6 +9,8 @@ import pandas as pd
 from parse import parse
 from tqdm import tqdm
 
+variant = os.path.basename(os.getcwd())
+
 # load community submissions of note
 
 subs = {}
@@ -17,7 +19,7 @@ for result in sorted(glob.glob("../1a_*_*.csv")):
     label = str(result).replace("../1a_", "").replace(".csv", "")
     subs[label] = pd.read_csv(result)
 
-# load and plot spectral data
+# survey spectral data
 
 jobs = {}
 
@@ -32,33 +34,54 @@ for iodir in dirs:
         jobs[dt] = [iodir]
 
 fig_cols = 2
-fig_rows = 2
+fig_rows = 1
+figsize = (4 * fig_cols+1, 4 * fig_rows)
 
-fig, axs = plt.subplots(fig_rows, fig_cols, figsize=(4*fig_cols+1, 4*fig_rows),
+fig, axs = plt.subplots(fig_rows, fig_cols, figsize=figsize,
                         constrained_layout=True)
 axs = axs.flatten()
+fig.suptitle(variant)
 
-for idx, (dt, dirs) in enumerate(jobs.items()):
+# plot community results
+
+ax = axs[0]
+
+ax.set_title("Community Uploads")
+ax.set_xlabel("Time $t$ / [a.u.]")
+ax.set_ylabel("Free energy $\\mathcal{F}$ / [a.u.]")
+ax.set_xlim([ 1, 2e5])
+ax.set_ylim([10, 350])
+
+for label, df in subs.items():
+    ax.loglog(df["time"], df["free_energy"], label=label)
+
+ax.legend(loc="best", fontsize=8)
+
+# plot spectral data
+
+ax = axs[1]
+ax.set_xlim([ 1, 2e5])
+ax.set_ylim([10, 350])
+
+for dt, dirs in jobs.items():
     print("")
-    ax = axs[idx]
     ax.set_title(f"$\Delta t = {dt}$")
-
     ax.set_xlabel("Time $t$ / [a.u.]")
     ax.set_ylabel("Free energy $\\mathcal{F}$ / [a.u.]")
-    ax.set_xlim([1.0, 2e5])
 
     # plot community uploads of note
     for label, df in subs.items():
-        ax.loglog(df["time"], df["free_energy"], color="silver")
+        ax.loglog(df["time"], df["free_energy"], color="silver", zorder=0.0)
 
     for zord, iodir in enumerate(dirs):
+        priority = 10 - 9 * zord / len(dirs)
         _, dx = parse("dt{:6.4f}_dx{:6.4f}", iodir)
 
         ene = f"{iodir}/ene.csv"
 
         df = pd.read_csv(ene)
         label = f"$\\Delta x = {dx:5.03f}$"
-        ax.loglog(df["time"], df["free_energy"], label=label, zorder=10.0-zord)
+        ax.loglog(df["time"], df["free_energy"], label=label, zorder=priority)
 
         pbar = tqdm(sorted(glob.glob(f"{iodir}/c_*.npz")))
         for npz in pbar:
@@ -82,7 +105,7 @@ for idx, (dt, dirs) in enumerate(jobs.items()):
 
         gc.collect()
 
-    ax.legend(loc="best", fontsize=8)
+    ax.legend(ncol=2, loc="best", fontsize=8)
 
 # Render to PNG
 
