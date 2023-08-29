@@ -25,7 +25,10 @@ import time
 # import from `spectral.py` in same folder as the script
 sys.path.append(os.path.dirname(__file__))
 
-from spectral import SpectralInterpolant
+from spectral import SpectralInterpolant as Interpolant  # CoincidentInterpolant
+
+# reset color cycle for 16 lines
+plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.hsv(np.linspace(0, 1, 16)))
 
 # parse command-line flags
 parser = ArgumentParser()
@@ -79,7 +82,7 @@ plt.ylabel("L2 norm, $||\\Delta c||_2$ / [a.u.]")
 
 # Interpolate!
 
-sinterp = SpectralInterpolant(gold_N, gold_N)
+sinterp = Interpolant(gold_N, gold_N)
 
 jobs = {}
 
@@ -146,10 +149,12 @@ for t in times:
 
     print()
 
+ylim = plt.ylim()
+plt.ylim(ylim)
 
 h = np.linspace(2 * gold_h, 6.25, 100)
-plt.loglog(200/h, h**2, label=r"$\mathcal{O}(h^2)$")
-plt.loglog(200/h, h**4, label=r"$\mathcal{O}(h^4)$")
+plt.loglog(200/h, h**2, color="silver", label=r"$\mathcal{O}(h^2)$")
+plt.loglog(200/h, h**4, color="silver", linestyle="dashed", label=r"$\mathcal{O}(h^4)$")
 
 plt.legend(loc="best")
 plt.savefig(png, dpi=400, bbox_inches="tight")

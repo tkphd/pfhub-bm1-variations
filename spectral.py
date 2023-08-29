@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
+import numba
 import numpy as np
 import numpy.fft as FFT
 import numpy.linalg as LA
 
 π = np.pi
+L = 200
 
 α = 0.3  # eqm composition of phase A
 β = 0.7  # eqm composition of phase B
@@ -48,11 +50,11 @@ def free_energy(c, c_hat, K, dx):
 
 
 class Evolver:
-    def __init__(self, c, dx):
+    def __init__(self, c, c_old, dx):
         self.dx = dx
 
         self.c = c.copy()
-        self.c_old = np.ones_like(self.c)
+        self.c_old = c_old.copy()
         self.c_sweep = np.ones_like(self.c)
 
         self.c_hat = FFT.fft2(self.c)
@@ -72,9 +74,8 @@ class Evolver:
 
         # dealias the flux capacitor
         self.nyquist_mode = 2.0 * k.max() / 3
-        self.alias_mask = np.where(
-            np.sqrt(self.K[0]**2 + self.K[1]**2) < self.nyquist_mode,
-            True, False).astype(bool)
+        self.alias_mask = np.array( (np.abs(self.K[0]) < self.nyquist_mode) \
+                                  * (np.abs(self.K[1]) < self.nyquist_mode), dtype=bool)
 
 
     def free_energy(self):
@@ -127,12 +128,12 @@ class Evolver:
         return residual, sweep
 
 
-# === Spectral Interpolation ===
+# === Coincident Interpolation ===
 # performant implementation after @stvdwtt
 
-class SpectralInterpolant:
+class CoincidentInterpolant:
     """
-    Spectrally-accurate periodic interpolation framework
+    O(h²)-accurate periodic interpolation framework
     """
     def __init__(self, Nx, Ny):
         """
@@ -209,3 +210,98 @@ class SpectralInterpolant:
         fine = FFT.ifft2(self.fine_hat) * scale_x * scale_y
 
         return fine.real
+
+
+# === Spectral Interpolation ===
+# accurate implementation after Trefethen
+
+@numba.njit(cache=True)
+def Sn(x, hc):
+    # Periodic sinc function
+    # Trefethen Eq. (3.7)
+    return (hc * np.sin(π * x / hc)) \
+         / (2 * π * np.tan(x / 2))
+
+
+@numba.njit(parallel=True)
+def generate_hash_table(Nx_fine, Nx_coarse, table):
+    """
+    Create the hash table, given
+    - Nf, Nc are even and domain is reasonably well refined
+    - hc/hf is an integer
+    """
+
+    hf = 2 * π / Nx_fine
+    hc = 2 * π / Nx_coarse
+
+    N_ratio = Nx_fine // Nx_coarse
+
+    for i in numba.prange(Nx_fine - 1):
+        xf = i * hf
+        for k in numba.prange(Nx_coarse):
+            xc = k * hc
+            idx = abs(i - N_ratio * k)
+
+            dx = abs(xf - xc)
+            table[idx] = 1.0 if dx < 1e-6 else Sn(dx, hc)
+
+            # If multiple dx map to the same index, that's a collision.
+            # collision = (not np.isclose(table[idx], 0.0) and \
+            #              not np.isclose(table[idx], tmp))
+
+            # if not collision:
+            #    table[idx] = tmp
+            # else:
+            #     # raise KeyError(f"Collision @ {idx}, {tmp} != {table[idx]}")
+            #     table[idx] = np.nan
+
+
+@numba.njit(parallel=True)
+def interpolate(coarse, fine, table):
+    """
+    Interpolate coarse field data onto the fine mesh
+    """
+    Nx_coarse = coarse.shape[0]
+    Nx_fine = fine.shape[0]
+    N_ratio = Nx_fine // Nx_coarse
+
+    # fine/outer loop
+    for i in numba.prange(Nx_fine):
+        for j in numba.prange(Nx_fine):
+            value = 0.
+            # coarse/inner loop
+            for k in range(Nx_coarse):
+                idx = abs(i - N_ratio * k)
+                s_x = table[idx]
+                for l in range(Nx_coarse):
+                    idy = abs(j - N_ratio * l)
+                    s_y = table[idy]
+                    value += s_x * s_y * coarse[k, l]
+
+            fine[i, j] = value
+
+
+class SpectralInterpolant:
+    """
+    Spectrally accurate periodic interpolation framework
+    """
+    def __init__(self, Nx, Ny):
+        """
+        Set the "fine mesh" details in real & reciprocal space
+        """
+        self.Nx = Nx
+        self.Ny = Ny
+        self.shape = (Nx, Ny)
+        self.hf = L / Nx
+        self.fine = np.zeros(self.shape, dtype=float)
+        self.table = np.ones(Nx, dtype=float)
+
+
+    def upsample(self, coarse):
+        generate_hash_table(self.Nx, coarse.shape[0], self.table)
+        # generate_hash_table.parallel_diagnostics(level=4)
+
+        interpolate(coarse, self.fine, self.table)
+        # interpolate.parallel_diagnostics(level=4)
+
+        return self.fine

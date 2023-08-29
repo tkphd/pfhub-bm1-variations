@@ -82,8 +82,8 @@ def start_report():
         fh.write(f"{header}\n")
 
 
-def write_and_report(t, c, energies):
-    np.savez_compressed(f"{iodir}/c_{t:08.0f}.npz", c=c)
+def write_and_report(t, evolver, energies):
+    np.savez_compressed(f"{iodir}/c_{t:08.0f}.npz", c=evolver.c, c_old=evolver.c_old)
 
     if energies is not None:
         with open(f"{iodir}/ene.csv", "a") as fh:
@@ -93,9 +93,9 @@ def write_and_report(t, c, energies):
 
 # === generate the initial condition ===
 
-ζ = 0.5   # mean composition
-ϵ = 0.01  # noise amplitude
-λ = 0.04 * L  # width of periodic boundary shell
+ζ = 0.5    # mean composition
+ϵ = 0.01   # noise amplitude
+λ = L / 40 # width of periodic boundary shell
 
 N = np.rint(L / dx).astype(int)
 x = np.linspace(0., L, N)
@@ -119,16 +119,16 @@ ripples = lambda x, y, A, B: np.cos(A[0] * x) * np.cos(B[0] * y) \
                            + np.cos(A[2] * x - B[2] * y) \
                            * np.cos(A[3] * x - B[3] * y)
 
-tophat = lambda x: 0.25 * (1 + np.tanh(np.pi * (x - λ) / λ)) \
-                        * (1 + np.tanh(np.pi * (L - x - λ) / λ))
-
 ic_orig = lambda x, y: ζ + ϵ * ripples(x, y, A0, B0)
-
-ic_phat = lambda x, y: ζ + ϵ * tophat(x) * tophat(y) * ripples(x, y, A0, B0)
 
 ic_peri = lambda x, y: ζ + ϵ * ripples(x, y, Ap, Bp)
 
-if args.variant == "original":
+tophat = lambda x: 0.25 * (1 + np.tanh(np.pi * (x - λ) / λ)) \
+                        * (1 + np.tanh(np.pi * (L - x - λ) / λ))
+
+ic_phat = lambda x, y: ζ + ϵ * tophat(x) * tophat(y) * ripples(x, y, A0, B0)
+
+if args.variant   == "original":
     ic = ic_orig
 elif args.variant == "periodic":
     ic = ic_peri
@@ -146,16 +146,21 @@ if resuming:
     ene_df = pd.read_csv(f"{iodir}/ene.csv")
     print(ene_df.tail())
     t = float(ene_df.time.iloc[-1])
-    startTime -= ene_df.runtime.iloc[-1]
-    with np.load(npz_files[-1]) as npz:
-        c = npz["c"]
 
     print(f"Resuming from {npz_files[-1]} (t={t})")
 
+    startTime -= ene_df.runtime.iloc[-1]
+    with np.load(npz_files[-1]) as npz:
+        c = npz["c"]
+        c_old = npz["c_old"]
+    evolve_ch = Evolver(c, c_old, dx)
+
 else:
+    print("Launching a clean simulation")
     start_report()
     t = 0.0
     c = ic(X, Y)
+    evolve_ch = Evolver(c, c, dx)
 
 # Don't resume finished jobs.
 if t >= t_final or np.isclose(t, t_final):
@@ -163,16 +168,14 @@ if t >= t_final or np.isclose(t, t_final):
 
 # === prepare to evolve ===
 
-evolve_ch = Evolver(c, dx)
-
 if resuming:
     residual = 1.0
     energies = []
 else:
     residual = 1e-5
-    energies = [[time.time() - startTime, t, evolve_ch.free_energy(), residual, 1]]
+    energies = [[time.time() - startTime, t, evolve_ch.free_energy()]]
 
-    write_and_report(t, evolve_ch.c, energies)
+    write_and_report(t, evolve_ch, energies)
 
 
 for check in CheckpointStepper(start=t,
@@ -197,7 +200,7 @@ for check in CheckpointStepper(start=t,
     dt = step.want
 
     energies.append([stopwatch(startTime), t, evolve_ch.free_energy()])
-    write_and_report(t, evolve_ch.c, energies)
+    write_and_report(t, evolve_ch, energies)
 
     if not np.all(np.isfinite(evolve_ch.c)):
         raise ValueError("Result is not Real!")

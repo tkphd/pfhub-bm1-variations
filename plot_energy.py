@@ -11,6 +11,9 @@ from tqdm import tqdm
 
 variant = os.path.basename(os.getcwd())
 
+# reset color cycle for 16 lines
+plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.rainbow(np.linspace(0, 1, 16)))
+
 # load community submissions of note
 
 subs = {}
@@ -55,7 +58,7 @@ ax.set_ylim([10, 350])
 for label, df in subs.items():
     ax.loglog(df["time"], df["free_energy"], label=label)
 
-ax.legend(loc="best", fontsize=8)
+ax.legend(loc=3, fontsize=6)
 
 # plot spectral data
 
@@ -80,8 +83,9 @@ for dt, dirs in jobs.items():
         ene = f"{iodir}/ene.csv"
 
         df = pd.read_csv(ene)
-        label = f"$\\Delta x = {dx:5.03f}$"
-        ax.loglog(df["time"], df["free_energy"], label=label, zorder=priority)
+        label = f"$\\Delta x = {dx:6.04f}$"
+        ax.loglog(df["time"], df["free_energy"], label=label,
+                  marker="x", markersize=1, zorder=priority)
 
         pbar = tqdm(sorted(glob.glob(f"{iodir}/c_*.npz")))
         for npz in pbar:
@@ -105,7 +109,7 @@ for dt, dirs in jobs.items():
 
         gc.collect()
 
-    ax.legend(ncol=2, loc="best", fontsize=8)
+    ax.legend(ncol=2, loc=3, fontsize=6)
 
 # Render to PNG
 
