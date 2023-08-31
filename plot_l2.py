@@ -25,7 +25,8 @@ import time
 # import from `spectral.py` in same folder as the script
 sys.path.append(os.path.dirname(__file__))
 
-from spectral import SpectralInterpolant as Interpolant  # CoincidentInterpolant
+# from spectral import SpectralInterpolant as Interpolant
+from spectral import CoincidentInterpolant as Interpolant
 
 # reset color cycle for 16 lines
 plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.hsv(np.linspace(0, 1, 16)))
@@ -136,9 +137,11 @@ for t in times:
             if not os.path.exists(refined_png):
                 plt.figure(2, figsize=(10, 8))
                 plt.title(f"$\\Delta x={job_h},\\ \\Delta t={args.dt}\\ @\\ t={t:,d}$")
-                plt.xlabel("$x$ / [a.u.]")
-                plt.ylabel("$y$ / [a.u.]")
-                plt.colorbar(plt.imshow(job_refined, interpolation=None, origin="lower"))
+                plt.xlabel("$k_x$ / [a.u.]")
+                plt.ylabel("$k_y$ / [a.u.]")
+                fft_refined = np.fft.fftshift(np.fft.fft2(job_refined))
+                plt.colorbar(plt.imshow(fft_refined.real, norm="asinh", cmap="gray",
+                                        interpolation=None, origin="lower"))
                 plt.savefig(refined_png, dpi=400, bbox_inches="tight")
                 plt.close()
 

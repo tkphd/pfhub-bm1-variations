@@ -16,12 +16,12 @@ M = 5.0  # diffusivity
 
 def finterf(c_hat, Ksq):
     # interfacial free energy density
-    return κ * FFT.ifft2(Ksq * c_hat**2)
+    return κ * FFT.ifft2(Ksq * c_hat**2).real
 
 
 def fbulk(c):
     # bulk free energy density
-    return ρ * (c - α)**2 * (c - β)**2
+    return ρ * (c - α)**2 * (β - c)**2
 
 
 def dfdc(c):
@@ -46,7 +46,9 @@ def free_energy(c, c_hat, K, dx):
     Cf. Trefethen Eqn. 12.5: typical integration is sub-spatially
     accurate, but this trapezoid rule retains accuracy.
     """
-    return dx**2 * (κ/2 * (c_x(c_hat, K)**2 + c_y(c_hat, K)**2) + fbulk(c)).sum()
+    c_x_hat = c_x(c_hat, K)
+    c_y_hat = c_y(c_hat, K)
+    return dx**2 * (κ/2 * (c_x_hat**2 + c_y_hat**2) + fbulk(c)).sum()
 
 
 class Evolver:
@@ -65,8 +67,8 @@ class Evolver:
 
         # prepare auxiliary arrays
         k = 2 * π * FFT.fftfreq(self.c.shape[0], d=self.dx)
-        self.K = np.array(np.meshgrid(k, k, indexing="ij"), dtype=float)
-        self.Ksq = np.sum(self.K * self.K, axis=0, dtype=float)
+        self.K = np.array(np.meshgrid(k, k, indexing="ij"), dtype=np.float64)
+        self.Ksq = np.sum(self.K * self.K, axis=0, dtype=np.float64)
 
         # coefficient of terms linear in c_hat
         self.linear_coefficient = 2 * ρ * (α**2 + 4 * α * β + β**2) \
@@ -75,7 +77,8 @@ class Evolver:
         # dealias the flux capacitor
         self.nyquist_mode = 2.0 * k.max() / 3
         self.alias_mask = np.array( (np.abs(self.K[0]) < self.nyquist_mode) \
-                                  * (np.abs(self.K[1]) < self.nyquist_mode), dtype=bool)
+                                  * (np.abs(self.K[1]) < self.nyquist_mode),
+                                    dtype=bool)
 
 
     def free_energy(self):
@@ -219,8 +222,8 @@ class CoincidentInterpolant:
 def Sn(x, hc):
     # Periodic sinc function
     # Trefethen Eq. (3.7)
-    return (hc * np.sin(π * x / hc)) \
-         / (2 * π * np.tan(x / 2))
+    return 1.0 if np.abs(x) < 1e-5 \
+        else (hc * np.sin(π * x / hc)) / (2 * π * np.tan(x / 2))
 
 
 @numba.njit(parallel=True)
@@ -242,8 +245,7 @@ def generate_hash_table(Nx_fine, Nx_coarse, table):
             xc = k * hc
             idx = abs(i - N_ratio * k)
 
-            dx = abs(xf - xc)
-            table[idx] = 1.0 if dx < 1e-6 else Sn(dx, hc)
+            table[idx] = Sn(xf - xc, hc)
 
             # If multiple dx map to the same index, that's a collision.
             # collision = (not np.isclose(table[idx], 0.0) and \
@@ -293,8 +295,8 @@ class SpectralInterpolant:
         self.Ny = Ny
         self.shape = (Nx, Ny)
         self.hf = L / Nx
-        self.fine = np.zeros(self.shape, dtype=float)
-        self.table = np.ones(Nx, dtype=float)
+        self.fine = np.zeros(self.shape, dtype=np.float64)
+        self.table = np.ones(Nx, dtype=np.float64)
 
 
     def upsample(self, coarse):
