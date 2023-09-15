@@ -8,6 +8,7 @@ import os
 import pandas as pd
 from parse import parse
 from tqdm import tqdm
+from zipfile import BadZipFile
 
 variant = os.path.basename(os.getcwd())
 
@@ -93,19 +94,22 @@ for dt, dirs in jobs.items():
             img = npz.replace("npz", "png")
 
             if not os.path.exists(img):
-                c = np.load(npz)
-                if np.all(np.isfinite(c["c"])):
-                    _, _, t = parse("dt{}_dx{}/c_{}.npz", npz)
-                    t = int(t)
+                try:
+                    c = np.load(npz)
+                    if np.all(np.isfinite(c["c"])):
+                        _, _, t = parse("dt{}_dx{}/c_{}.npz", npz)
+                        t = int(t)
 
-                    plt.figure(2, figsize=(10, 8))
-                    plt.title(f"$\\Delta x={dx},\\ \\Delta t={dt}\\ @\\ t={t:,d}$")
-                    plt.xlabel("$x$ / [a.u.]")
-                    plt.ylabel("$y$ / [a.u.]")
-                    plt.colorbar(plt.imshow(c["c"], interpolation=None, origin="lower"))
-                    plt.savefig(img, dpi=400, bbox_inches="tight")
+                        plt.figure(2, figsize=(10, 8))
+                        plt.title(f"$\\Delta x={dx},\\ \\Delta t={dt}\\ @\\ t={t:,d}$")
+                        plt.xlabel("$x$ / [a.u.]")
+                        plt.ylabel("$y$ / [a.u.]")
+                        plt.colorbar(plt.imshow(c["c"], interpolation=None, origin="lower"))
+                        plt.savefig(img, dpi=400, bbox_inches="tight")
 
-                    plt.close()
+                        plt.close()
+                except BadZipFile:
+                    pass
 
         gc.collect()
 

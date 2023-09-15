@@ -198,7 +198,6 @@ for t in times:
 
         gc.collect()
 
-    print(f"Saving {variant} image to {png}")
 
     plt.figure(1)
     plt.loglog(resolutions, norms, marker="o", label=f"$t={t:,d}$")

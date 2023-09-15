@@ -31,7 +31,7 @@ startTime = time.time()
 
 # System parameters & kinetic coefficients
 
-t_final = 1_000
+t_final = 100_000
 L = 200.
 π = np.pi
 
@@ -195,11 +195,11 @@ for check in CheckpointStepper(start=t,
         dt = step.size
         evolve_ch.solve(dt)
         t += dt
+        energies.append([stopwatch(startTime), t, evolve_ch.free_energy()])
         _ = step.succeeded()
 
     dt = step.want
 
-    energies.append([stopwatch(startTime), t, evolve_ch.free_energy()])
     write_and_report(t, evolve_ch, energies)
 
     if not np.all(np.isfinite(evolve_ch.c)):
