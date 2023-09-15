@@ -138,13 +138,11 @@ class CoincidentInterpolant:
     """
     O(h²)-accurate periodic interpolation framework
     """
-    def __init__(self, Nx, Ny):
+    def __init__(self, shape):
         """
         Set the "fine mesh" details in real & reciprocal space
         """
-        self.Nx = Nx
-        self.Ny = Ny
-        self.shape = (Nx, Ny)
+        self.shape = shape
         self.compute_wave_numbers()
         self.fine_hat = np.zeros(self.shape, dtype=complex)
 
@@ -155,24 +153,24 @@ class CoincidentInterpolant:
         kx = np.zeros(self.shape, dtype=complex)
         ky = np.zeros(self.shape, dtype=complex)
 
-        for i in range(0, self.Nx):
-            for j in range(0, self.Ny):
+        for i in range(0, self.shape[0]):
+            for j in range(0, self.shape[1]):
                 kx[i][j] = i;
                 ky[i][j] = j;
 
-                if (i > self.Nx/2):
-                    kx[i][j] = i - self.Nx
-                if (j > self.Ny / 2):
-                    ky[i][j] = j - self.Ny
+                if (i > self.shape[0]/2):
+                    kx[i][j] = i - self.shape[0]
+                if (j > self.shape[1] / 2):
+                    ky[i][j] = j - self.shape[1]
 
 
-                if (2*i == self.Nx):
+                if (2*i == self.shape[0]):
                     kx[i][j] = 0.0
-                if (2*j == self.Ny):
+                if (2*j == self.shape[1]):
                     ky[i][j] = 0.0
 
-        self.kx = 2 * π * complex(0,1) * kx/ self.Nx
-        self.ky = 2 * π * complex(0,1) * ky / self.Ny
+        self.kx = 2 * π * complex(0,1) * kx/ self.shape[0]
+        self.ky = 2 * π * complex(0,1) * ky / self.shape[1]
 
 
     def upsample(self, coarse):
@@ -185,8 +183,8 @@ class CoincidentInterpolant:
             if not (self.shape[i] / coarse.shape[i]).is_integer():
                 raise ValueError(f"Dim. {i}: field size is mismatched!")
 
-        scale_x = self.Nx // coarse.shape[0]
-        scale_y = self.Ny // coarse.shape[1]
+        scale_x = self.shape[0] // coarse.shape[0]
+        scale_y = self.shape[1] // coarse.shape[1]
 
         coarse_hat = FFT.fft2(coarse)
 
@@ -227,12 +225,14 @@ def Sn(x, hc):
 
 
 @numba.njit(parallel=True)
-def generate_hash_table(Nx_fine, Nx_coarse, table):
+def generate_hash_table(Nx_fine, Nx_coarse):
     """
     Create the hash table, given
     - Nf, Nc are even and domain is reasonably well refined
     - hc/hf is an integer
     """
+
+    table = np.zeros(Nx_fine, dtype=np.float64)
 
     hf = 2 * π / Nx_fine
     hc = 2 * π / Nx_coarse
@@ -241,10 +241,10 @@ def generate_hash_table(Nx_fine, Nx_coarse, table):
 
     for i in numba.prange(Nx_fine - 1):
         xf = i * hf
-        for k in numba.prange(Nx_coarse):
+        for k in range(Nx_coarse):
             xc = k * hc
-            idx = abs(i - N_ratio * k)
 
+            idx = abs(i - N_ratio * k)
             table[idx] = Sn(xf - xc, hc)
 
             # If multiple dx map to the same index, that's a collision.
@@ -257,20 +257,25 @@ def generate_hash_table(Nx_fine, Nx_coarse, table):
             #     # raise KeyError(f"Collision @ {idx}, {tmp} != {table[idx]}")
             #     table[idx] = np.nan
 
+    return table
 
 @numba.njit(parallel=True)
-def interpolate(coarse, fine, table):
+def interpolate(coarse, Nx_fine, table):
     """
     Interpolate coarse field data onto the fine mesh
     """
     Nx_coarse = coarse.shape[0]
-    Nx_fine = fine.shape[0]
     N_ratio = Nx_fine // Nx_coarse
+
+    # hc = L / Nx_coarse
+    # hf = L / Nx_fine
+
+    fine = np.zeros((Nx_fine, Nx_fine), dtype=np.float64)
 
     # fine/outer loop
     for i in numba.prange(Nx_fine):
-        for j in numba.prange(Nx_fine):
-            value = 0.
+        for j in range(Nx_fine):
+
             # coarse/inner loop
             for k in range(Nx_coarse):
                 idx = abs(i - N_ratio * k)
@@ -278,32 +283,61 @@ def interpolate(coarse, fine, table):
                 for l in range(Nx_coarse):
                     idy = abs(j - N_ratio * l)
                     s_y = table[idy]
-                    value += s_x * s_y * coarse[k, l]
 
-            fine[i, j] = value
+                    fine[i, j] += s_x * s_y * coarse[k, l]
+
+    return fine
 
 
 class SpectralInterpolant:
     """
-    Spectrally accurate periodic interpolation framework
+    Spectrally accurate real-space interpolation framework for periodic data
     """
-    def __init__(self, Nx, Ny):
+    def __init__(self, shape):
         """
         Set the "fine mesh" details in real & reciprocal space
         """
-        self.Nx = Nx
-        self.Ny = Ny
-        self.shape = (Nx, Ny)
-        self.hf = L / Nx
-        self.fine = np.zeros(self.shape, dtype=np.float64)
-        self.table = np.ones(Nx, dtype=np.float64)
+        self.shape = shape
+        self.hf = L / shape[0]
+        self.fine = None
+        self.table = None
 
 
     def upsample(self, coarse):
-        generate_hash_table(self.Nx, coarse.shape[0], self.table)
+        self.table = generate_hash_table(self.shape[0], coarse.shape[0])
         # generate_hash_table.parallel_diagnostics(level=4)
 
-        interpolate(coarse, self.fine, self.table)
+        self.fine = interpolate(coarse, self.shape[0], self.table)
         # interpolate.parallel_diagnostics(level=4)
+
+        return self.fine
+
+
+class FourierInterpolant:
+    """
+    Spectrally accurate reciprocal-space interpolation framework
+    """
+    def __init__(self, shape):
+        """
+        Set the "fine mesh" details in real & reciprocal space
+        """
+        self.shape = shape
+        self.fine = None
+
+
+    def pad(self, v):
+        """
+        Zero-pad an $n$-dimensional array $v$ to match the fine-mesh size
+        """
+        zs = np.array(np.array(self.shape) - np.array(v.shape), dtype=int).T // 2
+        return np.pad(v, zs)
+
+
+    def upsample(self, coarse):
+        v_hat = np.fft.fftshift(np.fft.fft2(coarse))
+        u_hat = self.pad(v_hat)
+
+        scale = np.prod(self.shape) / np.prod(coarse.shape)  # == (M/N)**2 for square meshes
+        self.fine = scale * np.fft.ifft2(np.fft.ifftshift(u_hat)).real
 
         return self.fine

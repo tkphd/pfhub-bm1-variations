@@ -31,15 +31,16 @@ startTime = time.time()
 
 # System parameters & kinetic coefficients
 
-t_final = 50_000
+t_final = 1_000
 L = 200.
+π = np.pi
 
 # Read command-line flags
 
 parser = ArgumentParser()
 
 parser.add_argument("variant", help="variant type",
-                    choices=["original", "periodic", "tophat"])
+                    choices=["original", "periodic", "tophat", "window"])
 parser.add_argument("-x", "--dx", help="mesh resolution", type=float)
 parser.add_argument("-t", "--dt", help="time resolution", type=float)
 
@@ -47,7 +48,7 @@ args = parser.parse_args()
 dx = args.dx
 dt = args.dt
 
-iodir = f"{args.variant}/dt{dt:6.04f}_dx{dx:6.04f}"
+iodir = f"{args.variant}/dt{dt:6.04f}_dx{dx:08.04f}"
 
 if not os.path.exists(iodir):
     print("Saving output to", iodir)
@@ -98,7 +99,10 @@ def write_and_report(t, evolver, energies):
 λ = L / 40 # width of periodic boundary shell
 
 N = np.rint(L / dx).astype(int)
-x = np.linspace(0., L, N)
+if N % 2 != 0:
+    raise ValueError(f"N must be an even integer! Got {N} from {L}/{dx}")
+
+x = np.linspace(0., L - dx, N)
 X, Y = np.meshgrid(x, x, indexing="xy")
 
 # published cosine coefficients
@@ -106,12 +110,8 @@ A0 = np.array([0.105, 0.130, 0.025, 0.070])
 B0 = np.array([0.110, 0.087, 0.150, 0.020])
 
 # periodic cosine coefficients
-Ap = np.pi / L * np.array([6.0, 8.0, 2.0, 4.0])
-Bp = np.pi / L * np.array([8.0, 6.0, 10., 2.0])
-
-# spherical cosine coefficients
-As = np.array([8.0, 12., 2.5, 7.0])
-Bs = np.array([15., 10., 1.5, 2.0])
+Ap = π / L * np.array([6.0, 8.0, 2.0, 4.0])
+Bp = π / L * np.array([8.0, 6.0, 10., 2.0])
 
 # not-random microstructure
 ripples = lambda x, y, A, B: np.cos(A[0] * x) * np.cos(B[0] * y) \
@@ -119,21 +119,21 @@ ripples = lambda x, y, A, B: np.cos(A[0] * x) * np.cos(B[0] * y) \
                            + np.cos(A[2] * x - B[2] * y) \
                            * np.cos(A[3] * x - B[3] * y)
 
-ic_orig = lambda x, y: ζ + ϵ * ripples(x, y, A0, B0)
+# window functions
+tophat = lambda x: 0.25 * (1 + np.tanh(π * (x - λ) / λ)) \
+                        * (1 + np.tanh(π * (L - x - λ) / λ))
 
-ic_peri = lambda x, y: ζ + ϵ * ripples(x, y, Ap, Bp)
+hann = lambda x: np.sin(π * x / L)**2
 
-tophat = lambda x: 0.25 * (1 + np.tanh(np.pi * (x - λ) / λ)) \
-                        * (1 + np.tanh(np.pi * (L - x - λ) / λ))
-
-ic_phat = lambda x, y: ζ + ϵ * tophat(x) * tophat(y) * ripples(x, y, A0, B0)
-
+# set IC variant
 if args.variant   == "original":
-    ic = ic_orig
+    ic = lambda x, y: ζ + ϵ * ripples(x, y, A0, B0)
 elif args.variant == "periodic":
-    ic = ic_peri
+    ic = lambda x, y: ζ + ϵ * ripples(x, y, Ap, Bp)
 elif args.variant == "tophat":
-    ic = ic_phat
+    ic = lambda x, y: ζ + ϵ * tophat(x) * tophat(y) * ripples(x, y, A0, B0)
+elif args.variant == "window":
+    ic = lambda x, y: ζ + ϵ * hann(x) * hann(y) * ripples(x, y, A0, B0)
 else:
     raise ValueError("Unknown variant {args.variant}")
 

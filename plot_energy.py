@@ -12,7 +12,7 @@ from tqdm import tqdm
 variant = os.path.basename(os.getcwd())
 
 # reset color cycle for 16 lines
-plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.rainbow(np.linspace(0, 1, 16)))
+plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.rainbow(np.linspace(0, 1, 20)))
 
 # load community submissions of note
 
@@ -26,7 +26,7 @@ for result in sorted(glob.glob("../1a_*_*.csv")):
 
 jobs = {}
 
-dirs = sorted(glob.glob("dt?.????_dx?.????"))
+dirs = sorted(glob.glob("dt?.????_dx???.????"))
 
 for iodir in dirs:
     dt, dx = parse("dt{}_dx{}", iodir)
@@ -83,7 +83,7 @@ for dt, dirs in jobs.items():
         ene = f"{iodir}/ene.csv"
 
         df = pd.read_csv(ene)
-        label = f"$\\Delta x = {dx:6.04f}$"
+        label = f"$\\Delta x = {dx}$"
         ax.loglog(df["time"], df["free_energy"], label=label,
                   marker="x", markersize=1, zorder=priority)
 
