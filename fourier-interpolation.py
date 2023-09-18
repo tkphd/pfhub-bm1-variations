@@ -16,7 +16,7 @@
 #
 # > _h/t Steve DeWitt (ORNL) for the concept and Daniel Wheeler (NIST) for the derivation_
 #
-# We have data $v$ on a coarse mesh $\mathrm{X}$ that we wish to compare to a gold standard field $u$ on a fine mesh $\mathrm{X}$.  
+# We have data $v$ on a coarse mesh $\mathrm{X}$ that we wish to compare to a gold standard field $u$ on a fine mesh $\mathrm{Y}$.  
 # This is simplest to implement by zero-padding the Fourier-transformed data $\hat{v}$ to match the shape of $\mathrm{Y}$, then transforming back to real space.  
 # Conceptually, this involves some work.
 #
