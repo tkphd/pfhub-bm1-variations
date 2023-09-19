@@ -12,15 +12,15 @@ from zipfile import BadZipFile
 
 variant = os.path.basename(os.getcwd())
 
-# reset color cycle for 16 lines
+# reset color cycle for full range of datasets
 plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.rainbow(np.linspace(0, 1, 20)))
 
 # load community submissions of note
 
 subs = {}
 
-for result in sorted(glob.glob("../1a_*_*.csv")):
-    label = str(result).replace("../1a_", "").replace(".csv", "")
+for result in sorted(glob.glob("../pfhub/1a_*_*.csv")):
+    label = str(result).replace("../pfhub/1a_", "").replace(".csv", "")
     subs[label] = pd.read_csv(result)
 
 # survey spectral data
@@ -61,21 +61,25 @@ for label, df in subs.items():
 
 ax.legend(loc=3, fontsize=6)
 
-# plot spectral data
+# plot spectral results
 
 ax = axs[1]
 ax.set_xlim([ 1, 2e5])
 ax.set_ylim([10, 350])
 
+ax.set_title(f"$\Delta t = {dt}$")
+ax.set_xlabel("Time $t$ / [a.u.]")
+ax.set_ylabel("Free energy $\\mathcal{F}$ / [a.u.]")
+
+ax.set_xscale("log")
+ax.set_yscale("log")
+
 for dt, dirs in jobs.items():
     print("")
-    ax.set_title(f"$\Delta t = {dt}$")
-    ax.set_xlabel("Time $t$ / [a.u.]")
-    ax.set_ylabel("Free energy $\\mathcal{F}$ / [a.u.]")
 
     # plot community uploads of note
     for label, df in subs.items():
-        ax.loglog(df["time"], df["free_energy"], color="silver", zorder=0.0)
+        ax.plot(df["time"], df["free_energy"], color="silver", zorder=0.0)
 
     for zord, iodir in enumerate(dirs):
         priority = 10 - 9 * zord / len(dirs)
@@ -85,8 +89,11 @@ for dt, dirs in jobs.items():
 
         df = pd.read_csv(ene)
         label = f"$\\Delta x = {dx}$"
-        ax.loglog(df["time"], df["free_energy"], label=label,
-                  marker="x", markersize=1, zorder=priority)
+        ax.plot(df["time"], df["free_energy"], label=label, zorder=priority)
+
+        if np.isclose(dx, 0.0625):
+            ax.scatter(df["time"].iloc[-1], df["free_energy"].iloc[-1],
+                       s=2, color="black", zorder=priority)
 
         pbar = tqdm(sorted(glob.glob(f"{iodir}/c_*.npz")))
         for npz in pbar:

@@ -3,12 +3,9 @@
 """
 Perform spectral interpolation of grid data
 and compute L2 norms by remapping the domain
-from [0, L] to [0, 2π] and using the periodic
-sinc function,
-
-$$
-S_n = \frac{h}{L} \frac{\sin(\pi x / h)}{\tan(x / 2)}
-$$
+from [0, L] to [0, 2π] and zero-padding in
+reciprocal space. For details, see
+`fourier-interpolation.ipynb` in this repo.
 """
 
 from argparse import ArgumentParser
@@ -22,28 +19,22 @@ import os
 from parse import parse
 import sys
 import time
-from zipfile import BadZipFile
+# from zipfile import BadZipFile
+try:
+    from rich import print
+except ImportError:
+    print("Failed to import rich, going monochrome")
 
 # import from `spectral.py` in same folder as the script
 sys.path.append(os.path.dirname(__file__))
-
 from spectral import FourierInterpolant as Interpolant
 
-# reset color cycle for 16 lines
-plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.hsv(np.linspace(0, 1, 16)))
-
-# parse command-line flags
-parser = ArgumentParser()
-parser.add_argument("--dx",   type=float, help="Candidate Gold Standard resolution")
-parser.add_argument("--dt",   type=float, help="Timestep of interest")
-parser.add_argument("--time", type=int,   help="Time slice of interest",
-                              nargs="+")
-args = parser.parse_args()
-
-variant = os.path.basename(os.getcwd())
 
 def elapsed(stopwatch):
-    return np.round(time.time() - stopwatch, 2)
+    """
+    Return the number of whole seconds elapsed since the mark
+    """
+    return np.ceil(time.time() - stopwatch).astype(int)
 
 
 def sim_details(dir):
@@ -55,29 +46,49 @@ def sim_details(dir):
     return float(dx), int(Nx), int(t_max)
 
 
-def log_hn(h, n, b=0):
+def log_hn(h, n, b=np.log(1000)):
     """
-    Support function for plotting 𝒪(hⁿ)
+    Support function for plotting 𝒪(hⁿ) on a log-log scale:
+      log(y) = n log(h) + b
+             = log(hⁿ) + b
+          y  = hⁿ exp(b)
+
+    Inputs
+    ------
     h: array of dx values
     n: order of accuracy
     b: intercept
     """
-    return b * h**n
+    return np.exp(b) * h**n
 
 
-# Helper class to center the colormap on a specific value
-# from Joe Kington via <http://chris35wills.github.io/matplotlib_diverging_colorbar/>
 class MidpointNormalize(matplotlib.colors.Normalize):
+    """
+    Helper class to center the colormap on a specific value from Joe Kington via
+    <http://chris35wills.github.io/matplotlib_diverging_colorbar/>
+    """
     def __init__(self, vmin=None, vmax=None, midpoint=None, clip=False):
         self.midpoint = midpoint
         matplotlib.colors.Normalize.__init__(self, vmin, vmax, clip)
 
     def __call__(self, value, clip=None):
-        # I'm ignoring masked values and all kinds of edge cases to make a
-        # simple example...
+        # ignoring masked values and lotsa edge cases
         x, y = [self.vmin, self.midpoint, self.vmax], [0, 0.5, 1]
         return np.ma.masked_array(np.interp(value, x, y), np.isnan(value))
 
+
+variant = os.path.basename(os.getcwd())
+
+# reset color cycle for 20 lines
+plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.hsv(np.linspace(0, 1, 20)))
+
+# parse command-line flags
+parser = ArgumentParser()
+parser.add_argument("--dx",   type=float, help="Candidate Gold Standard resolution")
+parser.add_argument("--dt",   type=float, help="Timestep of interest")
+parser.add_argument("--time", type=int,   help="Time slice(s) of interest, space-delimited",
+                              default=0,  nargs="+")
+args = parser.parse_args()
 
 # get "gold standard" info
 goldir = f"dt{args.dt:6.04f}_dx{args.dx:08.04f}"
@@ -86,24 +97,27 @@ gold_h, gold_N, gold_T = sim_details(goldir)
 if gold_N % 2 != 0:
     raise ValueError("Reference mesh size is not even!")
 
-print(f"Candidate with h={gold_h} has reached t={gold_T}\n")
-
+print(f"=== {variant}/{goldir} has reached t={gold_T} ===")
 
 # set output image file
 png = f"norm_{variant}_dt{args.dt:6.04f}.png"
 
 plt.figure(1, figsize=(10,8))
 plt.title(f"IC: {variant}")
+plt.xscale("log")
+plt.yscale("log")
 plt.xlabel("Mesh size $N_x$ / [a.u.]")
-plt.ylabel("L2 norm, $||\\Delta c||_2$ / [a.u.]")
+plt.ylabel("$\\ell^2$ norm, $||\\Delta c||_2$ / [a.u.]")
+plt.ylim([5e-14, 5e3])
 
 # plot lines for known orders of accuracy
-h_ref = 2 * gold_h
-h = np.linspace(h_ref, 6.25, 100)
+h = np.linspace(2 * gold_h, 50, 100)
 N = 200 / h
 
-plt.loglog(N, log_hn(N, -2, 1), color="silver", label=r"$\mathcal{O}(h^2)$", zorder=0)
-plt.loglog(N, log_hn(N, -4, 1), color="silver", linestyle="dashed", label=r"$\mathcal{O}(h^4)$", zorder=0)
+plt.plot(N, log_hn(N, -1, np.log(4e3)), color="silver", label=r"$\mathcal{O}(h^1)$", zorder=0, linestyle="dotted")
+plt.plot(N, log_hn(N, -2, np.log(6e3)), color="silver", label=r"$\mathcal{O}(h^2)$", zorder=0, linestyle="solid")
+plt.plot(N, log_hn(N, -3, np.log(8e3)), color="silver", label=r"$\mathcal{O}(h^3)$", zorder=0, linestyle="dashdot")
+plt.plot(N, log_hn(N, -4, np.log(1e4)), color="silver", label=r"$\mathcal{O}(h^4)$", zorder=0, linestyle="dashed")
 
 # Interpolate!
 
@@ -116,83 +130,88 @@ for job in sorted(glob.glob(f"dt{args.dt:6.04f}_dx???.????")):
     if stats[0] > gold_h:
         jobs[job] = stats
 
-times = np.unique(np.concatenate([np.array([0], dtype=int),
-                                  np.array(args.time, dtype=int)]))
-times = times[times <= gold_T]
 
-ylim = np.array([1e6, 1e-6])
-
-for t in times:
+for golden in sorted(glob.glob(f"{goldir}/c_????????.npz")):
     resolutions = []
     norms = []
 
-    with np.load(f"{goldir}/c_{t:08d}.npz") as npz:
+    _, t = parse("{}/c_{:d}.npz", golden)
+
+    with np.load(golden) as npz:
         gold_c = npz["c"]
 
+    print(f"\n  Interpolating {variant}s @ t = {t:,d} / {gold_T:,d}\n")
+
     for jobdir, (job_h, job_N, job_T) in jobs.items():
-        print(f"Interpolating {variant}/{jobdir} @ t={t:,d}")
+        print(f"    {jobdir}:", end=" ")
         terpdir = f"{jobdir}/interp"
         if not os.path.exists(terpdir):
             os.mkdir(terpdir)
 
         refined = f"{terpdir}/k_{t:08d}_h{gold_h:6.04f}.npz"
+        refined_png = refined.replace("npz", "png")
+
         job_refined = None
+        ell_two = None
+        watch = None
 
         if not os.path.exists(refined):
             try:
                 with np.load(f"{jobdir}/c_{t:08d}.npz") as npz:
                     job_c = npz["c"]
 
+                startNorm = time.time()
                 job_refined = sinterp.upsample(job_c)
-                np.savez_compressed(refined, c=job_refined)
+                ell_two = LA.norm(gold_c - job_refined)
+                np.savez_compressed(refined, c=job_refined, l2=ell_two)
+                watch = elapsed(startNorm)
             except FileNotFoundError:
                 job_refined = None
-        else:
-            try:
-                with np.load(refined) as npz:
-                    job_refined = npz["c"]
-            except BadZipFile:
-                job_refined = None
+                ell_two = None
 
-        if job_refined is not None:
-            print("    L2: ", end="")
-            ell_two = LA.norm(gold_c - job_refined)
-            print(f"{ell_two:.02e}")
 
-            resolutions.append(job_N)
-            norms.append(ell_two)
+        with np.load(refined) as npz:
+            ell_two = npz["l2"]
 
-            if ell_two > ylim[1]:
-                ylim[1] = ell_two
-            if ell_two < ylim[0]:
-                ylim[0] = ell_two
+            if ell_two is not None:
+                resolutions.append(job_N)
+                norms.append(ell_two)
+                if watch is not None:
+                    print(f"ℓ² = {ell_two:.02e}  ({watch:2d} s)")
+                else:
+                    print(f"ℓ² = {ell_two:.02e}")
+            else:
+                print("failed.")
 
-            refined_png = refined.replace("npz", "png")
             if not os.path.exists(refined_png):
-                fig, axs = plt.subplots(1, 2, figsize=(10, 4), constrained_layout=True, sharex=True, sharey=True)
-                fig.suptitle(f"$\\Delta x={job_h},\\ \\Delta t={args.dt}\\ @\\ t={t:,d}$")
+                job_refined = npz["c"]
+                fig, axs = plt.subplots(1, 2, figsize=(10, 4),
+                                        constrained_layout=True, sharex=True, sharey=True)
 
+                fig.suptitle(f"$\\Delta x={job_h},\\ \\Delta t={args.dt}\\ @\\ t={t:,d}$")
                 axs[0].set_xlabel("$x$ / [a.u.]")
                 axs[0].set_ylabel("$y$ / [a.u.]")
 
-                dmin = np.amin(job_refined[1:-2,1:-2])
-                davg = 0.5
-                dmax = np.amax(job_refined[1:-2,1:-2])
+                c_bulk = job_refined[1:-2,1:-2]
+
+                c_min = np.amin(c_bulk)
+                c_avg = np.average(c_bulk)
+                c_max = np.amax(c_bulk)
 
                 axs[0].set_title(r"$c$")
-                fig.colorbar(axs[0].imshow(job_refined, cmap="coolwarm", clim=(dmin, dmax),
-                                           norm=MidpointNormalize(midpoint=davg, vmin=dmin, vmax=dmax),
-                                           interpolation=None, origin="lower"))
-
-                # fft_refined = np.fft.fftshift(np.fft.fft2(job_refined))
-                # plt.colorbar(plt.imshow(fft_refined.real, norm="asinh", cmap="gray",
-                #                         interpolation=None, origin="lower"))
+                fig.colorbar(
+                    axs[0].imshow(job_refined, cmap="coolwarm", clim=(c_min, c_max),
+                                  norm=MidpointNormalize(midpoint=c_avg, vmin=c_min, vmax=c_max),
+                                  interpolation=None, origin="lower")
+                )
 
                 diff_c = np.absolute(job_refined - gold_c)
                 axs[1].set_title(r"$(\Delta c)^2$")
 
-                fig.colorbar(axs[1].imshow(diff_c, norm="log",
-                                           cmap="twilight_shifted", interpolation=None, origin="lower"))
+                fig.colorbar(
+                    axs[1].imshow(diff_c, norm="log",
+                                  cmap="twilight_shifted", interpolation=None, origin="lower")
+                )
                 fig.savefig(refined_png, dpi=400, bbox_inches="tight")
                 plt.close(fig)
 
@@ -200,13 +219,9 @@ for t in times:
 
 
     plt.figure(1)
-    plt.loglog(resolutions, norms, marker="o", label=f"$t={t:,d}$")
+    plt.plot(resolutions, norms, marker="o", label=f"$t={t:,d}$")
 
-    plt.ylim(ylim)
-    plt.legend(loc="best")
 
-    plt.savefig(png, dpi=400, bbox_inches="tight")
-
-    print()
-
-print(f"Saved image to {png}")
+plt.legend(loc="best")
+plt.savefig(png, dpi=400, bbox_inches="tight")
+print(f"\n  Saved image to {png}\n")
