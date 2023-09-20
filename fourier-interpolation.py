@@ -113,98 +113,50 @@ import numpy as np
 
 L = 2 * np.pi
 
-def pad(y, N, M):
+def pad(v_hat, M):
     """
     Zero-pad "before and after" coarse data to fit fine mesh size
+
+    Keyword arguments:
+    v_hat -- the Fourier-transformed field data to pad
+    M -- the length (1D) or shape (2D+) of the fine mesh
     """
-    z = (M - N) // 2
-    return np.pad(y, ((z, z),))
+    N = v_hat.shape
+    z = np.subtract(M, N, dtype=int) // 2  # equiv. (M - N) // 2
+    z = z.reshape((len(N), 1))
+    return np.pad(v_hat, z)
 
-def rpad(y, N, M):
+
+def fourier_interpolation(v, M):
     """
-    Zero-pad "after" coarse data
+    Interpolate the coarse field data $v$ onto a mesh of shape $M$
     """
-    z = (M - N) // 2
-    return np.pad(y, ((0, z),))
-
-
-# -
-
-# # 1D test
-
-# +
-def interp1D(v, M):
-    N = v.shape[0]
-    v_hat = np.fft.fftshift(np.fft.fft(v))
-    u_hat = pad(v_hat, N, M)
-    u = M / N * np.fft.ifft(np.fft.ifftshift(u_hat)).real
-    
+    v_hat = np.fft.fftshift(np.fft.fftn(v))
+    u_hat = pad(v_hat, np.flip(M))
+    scale = np.prod(np.array(u_hat.shape)) / np.prod(np.array(v.shape))
+    u = scale * np.fft.ifftn(np.fft.ifftshift(u_hat)).real
     return u
 
-def fun1D(x):
-    return np.exp(np.sin(x))  # just need a periodic function on [0, 2π]
 
 def data1D(N):
+    """
+    Create synthetic data $v$ of size $N$ using a periodic function on [0, 2π)
+    """
     x = np.linspace(0, L - L/N, N)
-    v = fun1D(x)
-
+    v = np.exp(np.sin(x))
     return x, v
 
 
-# +
-N = 16
-x, v = data1D(N)
-
-M = 1000
-y = np.linspace(0, L - L / M, M)
-U = fun1D(y)
-
-u = interp1D(v, M)
-
-plt.plot(y, u, label="interp");
-plt.scatter(x, v, label="coarse", color="red");
-plt.xlabel("$x$");
-plt.ylabel("$\\exp(\\sin x)$");
-plt.legend(loc="best");
-
-# +
-N1s = np.arange(4, M//8, 2)
-Z1s = []
-
-for N in N1s:
-    x, v = data1D(N)
-    u = interp1D(v, M)
-    Z1s += [np.linalg.norm(u - U)]
-
-plt.loglog(N1s, Z1s);
-plt.title("1D");
-plt.xlabel("Mesh size");
-plt.ylabel("$\ell^2$ norm");
-
-
-# -
-
-# ## 2D test
-
-# +
-def interp2D(v, M):
-    N = v.shape[0]
-    v_hat = np.fft.fftshift(np.fft.fft2(v))
-    u_hat = pad(v_hat, N, M)
-    scale = np.prod(np.array(u_hat.shape)) / np.prod(np.array(v.shape))
-    u = scale * np.fft.ifft2(np.fft.ifftshift(u_hat)).real
-    
-    return u
-
-def fun2D(x, y):
-    return np.exp(np.sin(x - np.pi/2 * np.cos(y)))  # just need a periodic function on [0, 2π] × [0, 2π]
-
 def data2D(N):
-    X = np.linspace(0, L - L/N, N)
-    x, y = np.meshgrid(X, X)
-    v = fun2D(x, y)
-
+    """
+    Create synthetic data $v$ of shape $N$ using a periodic function on [0, 2π)×[0,2π)
+    """
+    X = np.linspace(0, L - L/N[0], N[0])
+    Y = np.linspace(0, L - L/N[1], N[1])
+    x, y = np.meshgrid(X, Y, indexing="xy")
+    v = np.exp(np.sin(x - np.pi/2 * np.cos(y)))
     return v
+
 
 def side_by_side(title, coarse, refined):
     fig, ax = plt.subplots(1, 2, figsize=(10,4), constrained_layout=True)
@@ -215,30 +167,65 @@ def side_by_side(title, coarse, refined):
     fig.colorbar(ax[1].imshow(refined, cmap="coolwarm", origin="lower", interpolation=None));
 
 
-# +
-N = 70
-v = data2D(N)
+# -
 
-M = 1000
-u = interp2D(v, M)
-
-side_by_side("synthetic", v, u)
+# # 1D test
 
 # +
-Y = np.linspace(0, L - L/M, M)
-x, y = np.meshgrid(Y, Y)
-U = fun2D(x, y)
+N1 = 16
+x, v1 = data1D(N1)
 
-plt.colorbar(plt.imshow(np.absolute(u - U), norm="log", cmap="twilight_shifted", origin="lower", interpolation=None));
+M1 = 1024
+y, U1 = data1D(M1)
+
+u1 = fourier_interpolation(v1, M1)
+
+plt.plot(y, u1, label="interp");
+plt.scatter(x, v1, label="coarse", color="red");
+plt.xlabel("$x$");
+plt.ylabel("$\\exp(\\sin x)$");
+plt.legend(loc="best");
 
 # +
-N2s = np.arange(4, M//4, 4)
+N1s = np.arange(4, M1//8, 2)
+Z1s = []
+
+for N1 in N1s:
+    x, v1 = data1D(N1)
+    u1 = fourier_interpolation(v1, M1)
+    Z1s += [np.linalg.norm(u1 - U1)]
+
+plt.loglog(N1s, Z1s);
+plt.title("1D");
+plt.xlabel("Mesh size");
+plt.ylabel("$\ell^2$ norm");
+# -
+
+# ## 2D test
+
+# +
+N2 = (64, 32)
+v2 = data2D(N2)
+
+M2 = (1024, 512)
+u2 = fourier_interpolation(v2, M2)
+
+side_by_side("synthetic", v2, u2)
+
+# +
+U2 = data2D(M2)
+
+plt.colorbar(plt.imshow(np.absolute(u2 - U2), norm="log", cmap="twilight_shifted", origin="lower", interpolation=None));
+
+# +
+N2s = np.arange(4, M2[0]//4, 4)
 Z2s = []
 
 for N in N2s:
-    v = data2D(N)
-    u = interp2D(v, M)
-    Z2s += [np.linalg.norm(u - U)]
+    N2 = (N, N)
+    v2 = data2D(N2)
+    u2 = fourier_interpolation(v2, M2)
+    Z2s += [np.linalg.norm(u2 - U2)]
 
 plt.loglog(N2s, Z2s);
 plt.title("2D");
@@ -253,20 +240,24 @@ plt.ylabel("$\ell^2$ norm");
 # +
 # Spinodal decomposition parameters
 Lx = 200.
+Ly = 200.
+
 ζ = 0.5    # mean composition
 ϵ = 0.01   # noise amplitude
 
 hf = 0.0625  # fine resolution
 hc = 0.1250  # coarse resolution
 
-Nf = np.rint(Lx / hf).astype(int)
-Nc = np.rint(Lx / hc).astype(int)
+Nf = (np.rint(Lx / hf).astype(int), np.rint(Ly / hf).astype(int))
+Nc = (np.rint(Lx / hc).astype(int), np.rint(Ly / hc).astype(int))
 
-xc = np.linspace(0., Lx - hc, Nc)
-Xc, Yc = np.meshgrid(xc, xc, indexing="xy")
+xc = np.linspace(0., Lx - Lx/Nc[0], Nc[0])
+yc = np.linspace(0., Ly - Ly/Nc[1], Nc[1])
+Xc, Yc = np.meshgrid(xc, yc, indexing="xy")
 
-xf = np.linspace(0., Lx - hf, Nf)
-Xf, Yf = np.meshgrid(xf, xf, indexing="xy")
+xf = np.linspace(0., Lx - Lx/Nf[0], Nf[0])
+yf = np.linspace(0., Ly - Ly/Nf[1], Nf[1])
+Xf, Yf = np.meshgrid(xf, yf, indexing="xy")
 
 # not-random microstructure
 ripples = lambda x, y, A, B: np.cos(A[0] * x) * np.cos(B[0] * y) \
@@ -283,91 +274,111 @@ ic_orig = lambda x, y: ζ + ϵ * ripples(x, y, A0, B0)
 
 cfo = ic_orig(Xf, Yf)
 cco = ic_orig(Xc, Yc)
-ufo = interp2D(cco, Nf)
-print(np.linalg.norm(cfo - ufo))
+ufo = fourier_interpolation(cco, Nf)
+l2o = np.linalg.norm(cfo - ufo)
+print(f"ℓ² = {l2o:.3e}")
 
 side_by_side("Original IC", cco, ufo)
 
 # +
 # periodic cosine coefficients
 Ap = np.pi / Lx * np.array([6.0, 8.0, 2.0, 4.0])
-Bp = np.pi / Lx * np.array([8.0, 6.0, 10., 2.0])
+Bp = np.pi / Ly * np.array([8.0, 6.0, 10., 2.0])
 
 ic_peri = lambda x, y: ζ + ϵ * ripples(x, y, Ap, Bp)
 
 cfp = ic_peri(Xf, Yf)
 ccp = ic_peri(Xc, Yc)
-ufp = interp2D(ccp, Nf)
-print(np.linalg.norm(cfp - ufp))
+ufp = fourier_interpolation(ccp, Nf)
+l2p = np.linalg.norm(cfp - ufp)
+print(f"ℓ² = {l2p:.3e}")
 
 side_by_side("Periodic IC", ccp, ufp)
 # -
 
 # ## Window functions
 #
+# ### _tl;dr:_ use the Hann window!
+#
 # We can "force" the published IC to become smooth and continuous on the boundary by applying a [window function](https://en.wikipedia.org/wiki/Window_function#A_list_of_window_functions).
 # The "tophat" below is my naïve design, the remainder have better theoretical foundations.
-#
-# ### tl;dr: use the Hann window!
 
 # +
-# tophat window
 λ = Lx / 40 # width of periodic boundary shell
 
-tophat = lambda x: 0.25 * (1 + np.tanh(np.pi * (x - λ) / λ)) \
-                        * (1 + np.tanh(np.pi * (Lx - x - λ) / λ))
+# tophat window -- touches y=0
+tophat = lambda x, L: 0.25 * (1 + np.tanh(np.pi * (x - λ) / λ)) \
+                           * (1 + np.tanh(np.pi * (L - x - λ) / λ))
 
 # hann window -- touches y=0
-hann = lambda x, a0: a0 - (1 - a0) * np.cos(2 * np.pi * x / Lx)
+hann = lambda x, L: 0.5 * (1 - np.cos(2 * np.pi * x / L))
+
+# hamming window -- does not touch y=0
+hamming = lambda x, L: 25/46 - (1 - 25/46) * np.cos(2 * np.pi * x / L)
 
 # blackman window -- does not touch y=0
-blackman = lambda x, a0, a1, a2: a0 - a1 * np.cos(2 * np.pi * x / Lx) + a2 * np.cos(4 * np.pi * x / Lx)
+blackman = lambda x, L: 7938/18608 - 9240/18608 * np.cos(2 * np.pi * x / L) + 1430/18608 * np.cos(4 * np.pi * x / L)
 
-plt.plot(xf, tophat(xf), label="tophat");
-plt.plot(xf, hann(xf, 0.5), label="Hann");
-plt.plot(xf, hann(xf, 25/46), label="Hamming");
-plt.plot(xf, blackman(xf, 7938/18608, 9240/18608, 1430/18608), label="Blackman");
+plt.plot(xf, tophat(xf, Lx), label="tophat");
+plt.plot(xf, hann(xf, Lx), label="Hann");
+plt.plot(xf, hann(xf, Lx), label="Hamming");
+plt.plot(xf, blackman(xf, Lx), label="Blackman");
 plt.legend(loc="best");
 
 # +
-ic_phat = lambda x, y: ζ + ϵ * tophat(x) * tophat(y) * ripples(x, y, A0, B0)
+ic_phat = lambda x, y: ζ + ϵ * tophat(x, Lx) * tophat(y, Ly) * ripples(x, y, A0, B0)
 
 cft = ic_phat(Xf, Yf)
 cct = ic_phat(Xc, Yc)
-uft = interp2D(cct, Nf)
-print(f"L2 = {np.linalg.norm(cft - uft):.2e}")
+uft = fourier_interpolation(cct, Nf)
+l2t = np.linalg.norm(cft - uft)
+print(f"ℓ² = {l2t:.3e}")
 
 side_by_side("Tophat", cct, uft)
 
 # +
-ic_hann = lambda x, y: ζ + ϵ * hann(x, 0.5) * hann(y, 0.5) * ripples(x, y, A0, B0)
+ic_hann = lambda x, y: ζ + ϵ * hann(x, Lx) * hann(y, Ly) * ripples(x, y, A0, B0)
 
 cfh = ic_hann(Xf, Yf)
 cch = ic_hann(Xc, Yc)
-ufh = interp2D(cch, Nf)
-print(f"L2 = {np.linalg.norm(cfh - ufh):.2e}")
+ufh = fourier_interpolation(cch, Nf)
+l2h = np.linalg.norm(cfh - ufh)
+print(f"ℓ² = {l2h:.3e}")
 
 side_by_side("Hann Window", cch, ufh)
 
 # +
-ic_hamm = lambda x, y: ζ + ϵ * hann(x, 25/46) * hann(y, 25/46) * ripples(x, y, A0, B0)
+ic_hamm = lambda x, y: ζ + ϵ * hann(x, Lx) * hann(y, Ly) * ripples(x, y, A0, B0)
 
 cfm = ic_hamm(Xf, Yf)
 ccm = ic_hamm(Xc, Yc)
-ufm = interp2D(ccm, Nf)
-print(f"L2 = {np.linalg.norm(cfm - ufm):.2e}")
+ufm = fourier_interpolation(ccm, Nf)
+l2m = np.linalg.norm(cfm - ufm)
+print(f"ℓ² = {l2m:.3e}")
 
 side_by_side("Hamming Window", ccm, ufm)
 
 # +
-ic_blac = lambda x, y: ζ + ϵ * blackman(x, 7938/18608, 9240/18608, 1430/18608) * blackman(y, 7938/18608, 9240/18608, 1430/18608) * ripples(x, y, A0, B0)
+ic_blac = lambda x, y: ζ + ϵ * blackman(x, Lx) * blackman(y, Ly) * ripples(x, y, A0, B0)
 
 cfb = ic_blac(Xf, Yf)
 ccb = ic_blac(Xc, Yc)
-ufb = interp2D(ccb, Nf)
-print(f"L2 = {np.linalg.norm(cfb - ufb):.2e}")
+ufb = fourier_interpolation(ccb, Nf)
+l2b = np.linalg.norm(cfb - ufb)
+print(f"ℓ² = {l2b:.3e}")
 
 side_by_side("Blackman Window", ccb, ufb)
 # -
 
-
+# ## Window Summary
+#
+# | IC       | ℓ²        |
+# | ---      | ---       |
+# | original | 7.752e-01 |
+# | periodic | 3.832e-13 |
+# | tophat   | 1.350e-03 |
+# | Hann     | 1.688e-07 |
+# | Hamming  | 4.287e-02 |
+# | Blackman | 3.009e-03 |
+#
+# The periodic IC is "best," but the Hann window yields the best non-trivial results.
