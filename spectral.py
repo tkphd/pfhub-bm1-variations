@@ -130,29 +130,39 @@ class Evolver:
 
 class FourierInterpolant:
     """
-    Spectrally accurate reciprocal-space interpolation framework
+    Spectrally-accurate reciprocal-space interpolation for field data
+    on uniform rectangular grids with periodic boundary conditions.
+    For derivation, see `fourier-interpolation.ipynb`.
     """
     def __init__(self, shape):
         """
-        Set the "fine mesh" details in real & reciprocal space
+        Set the "fine mesh" details
         """
         self.shape = shape
         self.fine = None
 
 
-    def pad(self, v):
+    def pad(self, v_hat):
         """
-        Zero-pad an $n$-dimensional array $v$ to match the fine-mesh size
+        Zero-pad "before and after" coarse data to fit fine mesh size
+        in 1D or 2D (3D untested), with uniform rectangular grids
+
+        Input
+        -----
+        v_hat -- Fourier-transformed coarse field data to pad
         """
-        zs = np.array(np.array(self.shape) - np.array(v.shape), dtype=int).T // 2
-        return np.pad(v, zs)
+        M = np.flip(self.shape)  # transformation rotates the mesh
+        N = v_hat.shape
+        z = np.subtract(M, N, dtype=int) // 2  # ≡ (M - N) // 2
+        z = z.reshape((len(N), 1))
+        return np.pad(v_hat, z)
 
 
-    def upsample(self, coarse):
-        v_hat = np.fft.fftshift(np.fft.fft2(coarse))
+    def upsample(self, v):
+        """
+        Interpolate the coarse field data $v$ onto the fine mesh
+        """
+        v_hat = np.fft.fftshift(np.fft.fftn(v))
         u_hat = self.pad(v_hat)
-
-        scale = np.prod(self.shape) / np.prod(coarse.shape)  # == (M/N)**2 for square meshes
-        self.fine = scale * np.fft.ifft2(np.fft.ifftshift(u_hat)).real
-
-        return self.fine
+        scale = np.prod(np.array(u_hat.shape)) / np.prod(np.array(v.shape))
+        return scale * np.fft.ifftn(np.fft.ifftshift(u_hat)).real
