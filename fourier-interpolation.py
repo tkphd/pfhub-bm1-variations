@@ -370,15 +370,41 @@ print(f"ℓ² = {l2b:.3e}")
 side_by_side("Blackman Window", ccb, ufb)
 # -
 
+# ### Hann-Hybridized Periodic IC
+#
+# What if we use the Hann window to combine the continuous and discontinuous ICs?
+
+# +
+sin_win = lambda x, y, Lx, Ly: hann(x, Lx) * hann(y, Ly)
+cos_win = lambda x, y, Lx, Ly: (1 - hann(x, Lx)) * (1 - hann(y, Ly))
+
+ic_hybr = lambda x, y: ζ + ϵ * (sin_win(x, y, Lx, Ly) * ripples(x, y, A0, B0) 
+                              + cos_win(x, y, Lx, Ly) * ripples(x, y, Ap, Bp))
+
+cfx = ic_hybr(Xf, Yf)
+ccx = ic_hybr(Xc, Yc)
+ufx = fourier_interpolation(ccx, Nf)
+l2x = np.linalg.norm(cfx - ufx)
+print(f"ℓ² = {l2x:.3e}")
+
+side_by_side("Hybrid Window", ccx, ufx)
+# -
+
 # ## Window Summary
+#
+# The periodic IC is "best" in terms of spectral convergence.
+#
+# Using the Hann window to hybridize the periodic and original ICs preserves interesting features.
 #
 # | IC       | ℓ²        |
 # | ---      | ---       |
-# | original | 7.752e-01 |
 # | periodic | 3.832e-13 |
-# | tophat   | 1.350e-03 |
+# | hybrid   | 1.688e-07 |
 # | Hann     | 1.688e-07 |
-# | Hamming  | 4.287e-02 |
+# | tophat   | 1.350e-03 |
 # | Blackman | 3.009e-03 |
+# | Hamming  | 4.287e-02 |
+# | original | 7.752e-01 |
 #
-# The periodic IC is "best," but the Hann window yields the best non-trivial results.
+
+

@@ -31,7 +31,7 @@ startTime = time.time()
 
 # System parameters & kinetic coefficients
 
-t_final = 100_000
+t_final = 1_000_000
 L = 200.
 π = np.pi
 
@@ -40,7 +40,7 @@ L = 200.
 parser = ArgumentParser()
 
 parser.add_argument("variant", help="variant type",
-                    choices=["original", "periodic", "tophat", "window"])
+                    choices=["original", "periodic", "tophat", "window", "winner"])
 parser.add_argument("-x", "--dx", help="mesh resolution", type=float)
 parser.add_argument("-t", "--dt", help="time resolution", type=float)
 
@@ -123,7 +123,8 @@ ripples = lambda x, y, A, B: np.cos(A[0] * x) * np.cos(B[0] * y) \
 tophat = lambda x: 0.25 * (1 + np.tanh(π * (x - λ) / λ)) \
                         * (1 + np.tanh(π * (L - x - λ) / λ))
 
-hann = lambda x: np.sin(π * x / L)**2
+hann = lambda x: np.sin(π * x / L)**2  # Hann window
+hanc = lambda x: np.cos(π * x / L)**2  # complementary Hann window
 
 # set IC variant
 if args.variant   == "original":
@@ -134,6 +135,10 @@ elif args.variant == "tophat":
     ic = lambda x, y: ζ + ϵ * tophat(x) * tophat(y) * ripples(x, y, A0, B0)
 elif args.variant == "window":
     ic = lambda x, y: ζ + ϵ * hann(x) * hann(y) * ripples(x, y, A0, B0)
+elif args.variant == "winner":
+    ic = lambda x, y: ζ + ϵ * (hann(x) * hann(y) * ripples(x, y, A0, B0)
+                             + hanc(x) * hanc(y) * ripples(x, y, Ap, Bp))
+
 else:
     raise ValueError("Unknown variant {args.variant}")
 
