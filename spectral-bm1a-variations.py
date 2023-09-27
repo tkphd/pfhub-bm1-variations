@@ -40,7 +40,7 @@ L = 200.
 parser = ArgumentParser()
 
 parser.add_argument("variant", help="variant type",
-                    choices=["original", "periodic", "tophat", "window", "winner"])
+                    choices=["noise", "original", "periodic", "tophat", "window", "winner"])
 parser.add_argument("-x", "--dx", help="mesh resolution", type=float)
 parser.add_argument("-t", "--dt", help="time resolution", type=float)
 
@@ -127,7 +127,10 @@ hann = lambda x: np.sin(π * x / L)**2  # Hann window
 hanc = lambda x: np.cos(π * x / L)**2  # complementary Hann window
 
 # set IC variant
-if args.variant   == "original":
+if args.variant == "noise":
+    ic = None
+    prng = np.random.default_rng()  # PCG64
+elif args.variant == "original":
     ic = lambda x, y: ζ + ϵ * ripples(x, y, A0, B0)
 elif args.variant == "periodic":
     ic = lambda x, y: ζ + ϵ * ripples(x, y, Ap, Bp)
@@ -138,7 +141,6 @@ elif args.variant == "window":
 elif args.variant == "winner":
     ic = lambda x, y: ζ + ϵ * (hann(x) * hann(y) * ripples(x, y, A0, B0)
                              + hanc(x) * hanc(y) * ripples(x, y, Ap, Bp))
-
 else:
     raise ValueError("Unknown variant {args.variant}")
 
@@ -162,9 +164,12 @@ if resuming:
 
 else:
     print("Launching a clean simulation")
-    start_report()
+    if args.variant == "noise":
+        c = ζ + ϵ * (2 * prng.random((N, N)) - 1)
+    else:
+        c = ic(X, Y)
     t = 0.0
-    c = ic(X, Y)
+    start_report()
     evolve_ch = Evolver(c, c, dx)
 
 # Don't resume finished jobs.

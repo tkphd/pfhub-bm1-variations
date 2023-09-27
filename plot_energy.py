@@ -44,17 +44,19 @@ figsize = (4 * fig_cols+1, 4 * fig_rows)
 fig, axs = plt.subplots(fig_rows, fig_cols, figsize=figsize,
                         constrained_layout=True)
 axs = axs.flatten()
-fig.suptitle(variant)
+
+xlim = (1, 1.5e6)
+ylim = (10, 350)
 
 # plot community results
 
 ax = axs[0]
 
-ax.set_title("Community Uploads")
+ax.set_title("original IC: community uploads")
 ax.set_xlabel("Time $t$ / [a.u.]")
 ax.set_ylabel("Free energy $\\mathcal{F}$ / [a.u.]")
-ax.set_xlim([ 1, 2e5])
-ax.set_ylim([10, 350])
+ax.set_xlim(xlim)
+ax.set_ylim(ylim)
 
 for label, df in subs.items():
     ax.loglog(df["time"], df["free_energy"], label=label)
@@ -64,8 +66,8 @@ ax.legend(loc=3, fontsize=6)
 # plot spectral results
 
 ax = axs[1]
-ax.set_xlim([ 1, 2e5])
-ax.set_ylim([10, 350])
+ax.set_xlim(xlim)
+ax.set_ylim(ylim)
 
 ax.set_title(f"$\Delta t = {dt}$")
 ax.set_xlabel("Time $t$ / [a.u.]")
@@ -88,7 +90,7 @@ for dt, dirs in jobs.items():
         ene = f"{iodir}/ene.csv"
 
         df = pd.read_csv(ene)
-        label = f"$\\Delta x = {dx}$"
+        label = f"{variant} IC: $\\Delta x = {dx}$"
         ax.plot(df["time"], df["free_energy"], label=label, zorder=priority)
 
         if np.isclose(dx, 0.0625):
@@ -108,7 +110,7 @@ for dt, dirs in jobs.items():
                         t = int(t)
 
                         plt.figure(2, figsize=(10, 8))
-                        plt.title(f"$\\Delta x={dx},\\ \\Delta t={dt}\\ @\\ t={t:,d}$")
+                        plt.title(f"{variant} IC: $\\Delta x={dx},\\ \\Delta t={dt}\\ @\\ t={t:,d}$")
                         plt.xlabel("$x$ / [a.u.]")
                         plt.ylabel("$y$ / [a.u.]")
                         plt.colorbar(plt.imshow(c["c"], interpolation=None, origin="lower"))

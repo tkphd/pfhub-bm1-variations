@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.15.1
+#       jupytext_version: 1.15.2
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -132,7 +132,7 @@ def fourier_interpolation(v, M):
     Interpolate the coarse field data $v$ onto a mesh of shape $M$
     """
     v_hat = np.fft.fftshift(np.fft.fftn(v))
-    u_hat = pad(v_hat, np.flip(M))
+    u_hat = pad(v_hat, np.flip(M))  # transpose (x, y): this will break in 3D atm.
     scale = np.prod(np.array(u_hat.shape)) / np.prod(np.array(v.shape))
     u = scale * np.fft.ifftn(np.fft.ifftshift(u_hat)).real
     return u
