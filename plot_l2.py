@@ -104,7 +104,7 @@ print(f"=== {variant}/{goldir} has reached t={gold_T} ===\n")
 png = f"norm_{variant}_dt{args.dt:6.04f}.png"
 
 plt.figure(1, figsize=(10, 8))
-plt.title(f"IC: {variant}")
+plt.title(f"\"{variant.capitalize()}\" IC")
 plt.xscale("log")
 plt.yscale("log")
 plt.xlabel("Mesh size $N_x$ / [a.u.]")
@@ -144,7 +144,7 @@ for golden in sorted(glob.glob(f"{goldir}/c_????????.npz")):
     with np.load(golden) as npz:
         gold_c = npz["c"]
 
-    print(f"  Interpolating {variant}s @ t = {t:,d} / {gold_T:,d}")
+    print(f"  Interpolating {variant.capitalize()}s @ t = {t:,d} / {gold_T:,d}")
 
     for jobdir, (job_h, job_N, job_T) in jobs.items():
         terpdir = f"{jobdir}/interp"
@@ -188,7 +188,7 @@ for golden in sorted(glob.glob(f"{goldir}/c_????????.npz")):
                                         constrained_layout=True, sharex=True, sharey=True)
 
                 fig.suptitle(
-                    f"$\\Delta x={job_h},\\ \\Delta t={args.dt}\\ @\\ t={t:,d}$")
+                    f"\"{variant.capitalize()}\" IC: $\\Delta x={job_h},\\ \\Delta t={args.dt}\\ @\\ t={t:,d}$")
                 axs[0].set_xlabel("$x$ / [a.u.]")
                 axs[0].set_ylabel("$y$ / [a.u.]")
 

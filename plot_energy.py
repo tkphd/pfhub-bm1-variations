@@ -2,6 +2,7 @@
 
 import gc
 import glob
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -10,6 +11,7 @@ from parse import parse
 from tqdm import tqdm
 from zipfile import BadZipFile
 
+mpl.use("Agg")
 variant = os.path.basename(os.getcwd())
 
 # reset color cycle for full range of datasets
@@ -37,51 +39,25 @@ for iodir in dirs:
     else:
         jobs[dt] = [iodir]
 
-fig_cols = 2
-fig_rows = 1
-figsize = (4 * fig_cols+1, 4 * fig_rows)
-
-fig, axs = plt.subplots(fig_rows, fig_cols, figsize=figsize,
-                        constrained_layout=True)
-axs = axs.flatten()
+plt.figure(1, figsize=(10,8))
 
 xlim = (1, 1.5e6)
 ylim = (10, 350)
 
-# plot community results
+plt.xlim(xlim)
+plt.ylim(ylim)
 
-ax = axs[0]
+# === Plot spectral results ===
 
-ax.set_title("original IC: community uploads")
-ax.set_xlabel("Time $t$ / [a.u.]")
-ax.set_ylabel("Free energy $\\mathcal{F}$ / [a.u.]")
-ax.set_xlim(xlim)
-ax.set_ylim(ylim)
+plt.title(f"\"{variant.capitalize()}\" IC: $\Delta t = {dt}$")
+plt.xlabel("Time $t$ / [a.u.]")
+plt.ylabel("Free energy $\\mathcal{F}$ / [a.u.]")
 
-for label, df in subs.items():
-    ax.loglog(df["time"], df["free_energy"], label=label)
-
-ax.legend(loc=3, fontsize=6)
-
-# plot spectral results
-
-ax = axs[1]
-ax.set_xlim(xlim)
-ax.set_ylim(ylim)
-
-ax.set_title(f"$\Delta t = {dt}$")
-ax.set_xlabel("Time $t$ / [a.u.]")
-ax.set_ylabel("Free energy $\\mathcal{F}$ / [a.u.]")
-
-ax.set_xscale("log")
-ax.set_yscale("log")
+plt.xscale("log")
+plt.yscale("log")
 
 for dt, dirs in jobs.items():
     print("")
-
-    # plot community uploads of note
-    for label, df in subs.items():
-        ax.plot(df["time"], df["free_energy"], color="silver", zorder=0.0)
 
     for zord, iodir in enumerate(dirs):
         priority = 10 - 9 * zord / len(dirs)
@@ -90,12 +66,16 @@ for dt, dirs in jobs.items():
         ene = f"{iodir}/ene.csv"
 
         df = pd.read_csv(ene)
-        label = f"{variant} IC: $\\Delta x = {dx}$"
-        ax.plot(df["time"], df["free_energy"], label=label, zorder=priority)
+        label = f"$\\Delta x = {dx}$"
+        plt.plot(df["time"], df["free_energy"], label=label, zorder=priority)
 
+        # indicate current time of the gold standard
         if np.isclose(dx, 0.0625):
-            ax.scatter(df["time"].iloc[-1], df["free_energy"].iloc[-1],
-                       s=2, color="black", zorder=priority)
+            plt.plot(
+                (df["time"].iloc[-1], df["time"].iloc[-1]),
+                (df["free_energy"].iloc[-1], ylim[0]),
+                color="silver", linestyle="dotted", zorder=priority
+            )
 
         pbar = tqdm(sorted(glob.glob(f"{iodir}/c_*.npz")))
         for npz in pbar:
@@ -110,7 +90,7 @@ for dt, dirs in jobs.items():
                         t = int(t)
 
                         plt.figure(2, figsize=(10, 8))
-                        plt.title(f"{variant} IC: $\\Delta x={dx},\\ \\Delta t={dt}\\ @\\ t={t:,d}$")
+                        plt.title(f"\"{variant.capitalize()}\" IC: $\\Delta x={dx},\\ \\Delta t={dt}\\ @\\ t={t:,d}$")
                         plt.xlabel("$x$ / [a.u.]")
                         plt.ylabel("$y$ / [a.u.]")
                         plt.colorbar(plt.imshow(c["c"], interpolation=None, origin="lower"))
@@ -120,10 +100,12 @@ for dt, dirs in jobs.items():
                 except BadZipFile:
                     pass
 
+                plt.figure(1)
+
         gc.collect()
 
-    ax.legend(ncol=2, loc=3, fontsize=6)
+    plt.legend(ncol=2, loc=3, fontsize=6)
 
 # Render to PNG
 
-plt.savefig("energy.png", dpi=400, bbox_inches="tight")
+plt.savefig(f"energy_{variant}_dt{dt}.png", dpi=400, bbox_inches="tight")
