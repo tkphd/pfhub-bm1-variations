@@ -48,6 +48,33 @@ def free_energy(c, c_hat, K, dx):
     return dx**2 * (κ/2 * (c_x_hat**2 + c_y_hat**2) + fbulk(c)).sum()
 
 
+def autocorrelation(data):
+    """Compute the auto-correlation / 2-point statistics of a field variable"""
+    signal = data - np.mean(data)
+    fft = np.fft.fftn(signal)
+    inv = np.fft.fftshift(np.fft.ifftn(np.absolute(fft)**2))
+    # cor = np.fft.ifftshift(inv).real / (np.var(signal) * signal.size)
+    cor = inv.real / (np.var(signal) * signal.size)
+    return cor
+
+
+def radial_profile(data, center=None):
+    """Take the average in concentric rings around the center of a field"""
+    if center is None:
+        center = np.array(data.shape, dtype=int) // 2
+
+    nx, ny = data.shape
+    x, y = np.meshgrid(np.arange(nx), np.arange(ny), indexing="ij")
+    R = np.sqrt((x - center[0])**2 + (y - center[1])**2)
+
+    radial_average = lambda r : data[(R > r - 0.5) & (R < r + 0.5)].mean()
+
+    r = np.arange(center[0]+1)
+    μ = np.vectorize(radial_average)(r)
+
+    return r, μ
+
+
 class Evolver:
     def __init__(self, c, c_old, dx):
         self.dx = dx
