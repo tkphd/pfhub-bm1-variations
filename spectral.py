@@ -126,7 +126,7 @@ class Evolver:
         return self.residual(numer_coeff, denom_coeff)
 
 
-    def solve(self, dt):
+    def solve(self, dt, sweeps=1000):
         # semi-implicit discretization of the PFHub equation of motion
         residual = 1.0
         sweep = 0
@@ -142,7 +142,7 @@ class Evolver:
         denom_coeff = 1 + dt * M * self.Ksq * self.linear_coefficient # denominator
 
         # iteratively update c in place
-        while sweep < 1000 and residual > 1e-3:
+        while sweep < sweeps and residual > 1e-3:
             residual = self.sweep(numer_coeff, denom_coeff)
 
             if not np.isfinite(residual):
