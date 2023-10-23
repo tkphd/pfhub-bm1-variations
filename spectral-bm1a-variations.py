@@ -49,6 +49,7 @@ dx = args.dx
 dt = args.dt
 
 iodir = f"{args.variant}/dt{dt:6.04f}_dx{dx:08.04f}"
+chkpt = f"{iodir}/checkpoint.npz"
 
 if not os.path.exists(iodir):
     print("Saving output to", iodir)
@@ -83,13 +84,20 @@ def start_report():
         fh.write(f"{header}\n")
 
 
-def write_and_report(t, evolver, energies):
-    np.savez_compressed(f"{iodir}/c_{t:08.0f}.npz", c=evolver.c, c_old=evolver.c_old)
+def write_checkpoint(t, evolver, energies, fname):
+    np.savez_compressed(fname, c=evolver.c, c_old=evolver.c_old)
 
     if energies is not None:
         with open(f"{iodir}/ene.csv", "a") as fh:
             writer = csv.writer(fh)
             writer.writerows(energies)
+
+
+def write_and_report(t, evolver, energies):
+    write_checkpoint(t, evolver, energies, f"{iodir}/c_{t:08.0f}.npz")
+
+    if os.path.exists(chkpt):
+        os.remove(chkpt)
 
 
 # === generate the initial condition ===
@@ -146,20 +154,22 @@ else:
 
 # === generate or load microstructure ===
 
-npz_files = sorted(glob.glob(f"{iodir}/c_*.npz"))
+npz_files = sorted(glob.glob(f"{iodir}/c*.npz"))
 resuming = (len(npz_files) != 0) and os.path.exists(f"{iodir}/ene.csv")
 
 if resuming:
     ene_df = pd.read_csv(f"{iodir}/ene.csv")
     print(ene_df.tail())
     t = float(ene_df.time.iloc[-1])
-
-    print(f"Resuming from {npz_files[-1]} (t={t})")
-
     startTime -= ene_df.runtime.iloc[-1]
-    with np.load(npz_files[-1]) as npz:
+    last_npz = npz_files[-1]
+
+    print(f"Resuming from {last_npz} (t={t})")
+
+    with np.load(last_npz) as npz:
         c = npz["c"]
         c_old = npz["c_old"]
+
     evolve_ch = Evolver(c, c_old, dx)
 
 else:
@@ -188,6 +198,8 @@ else:
     write_and_report(t, evolve_ch, energies)
 
 
+checkTime = time.time()
+
 for check in CheckpointStepper(start=t,
                                stops=progression(int(t)),
                                stop=t_final):
@@ -206,6 +218,11 @@ for check in CheckpointStepper(start=t,
         evolve_ch.solve(dt)
         t += dt
         energies.append([stopwatch(startTime), t, evolve_ch.free_energy()])
+
+        if stopwatch(checkTime) > 86400:
+            write_checkpoint(t, evolve_ch, energies, chkpt)
+            checkTime = time.time()
+
         _ = step.succeeded()
 
     dt = step.want
