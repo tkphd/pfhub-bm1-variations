@@ -29,13 +29,34 @@ plt.title("IC Performance")
 plt.xlabel("Wall Time / [s]")
 plt.ylabel("Fictive Time / [a.u.]")
 
+plt.figure(2, figsize=(10, 8))
+plt.title("IC Residue")
+plt.xlabel("Wall Time / [s]")
+plt.ylabel("Residual / [a.u.]")
+
+res_plot = False
+
 for variant, ene in jobs.items():
     df = pd.read_csv(ene)
     label = f"{variant.capitalize()} IC"
+
+    plt.figure(1)
     plt.plot(df["runtime"], df["time"], label=label)
+
+    if "residual" in df.columns:
+        res_plot = True
+        plt.figure(2)
+        plt.semilogy(df["runtime"], df["residual"], label=label)
 
 # render to PNG
 
+plt.figure(1)
 plt.legend(ncol=2, loc="best", fontsize=6)
-
 plt.savefig("performance.png", dpi=400, bbox_inches="tight")
+plt.close()
+
+plt.figure(2)
+if res_plot:
+    plt.legend(ncol=2, loc="best", fontsize=6)
+    plt.savefig("residual.png", dpi=400, bbox_inches="tight")
+plt.close()

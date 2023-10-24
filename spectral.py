@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import numpy as np
+import matplotlib
 
 π = np.pi
 L = 200
@@ -10,6 +11,22 @@ L = 200
 ρ = 5.0  # well height
 κ = 2.0  # gradient energy coeff
 M = 5.0  # diffusivity
+
+class MidpointNormalize(matplotlib.colors.Normalize):
+    """
+    Helper class to center the colormap on a specific value from Joe Kington via
+    <http://chris35wills.github.io/matplotlib_diverging_colorbar/>
+    """
+
+    def __init__(self, vmin=None, vmax=None, midpoint=None, clip=False):
+        self.midpoint = midpoint
+        matplotlib.colors.Normalize.__init__(self, vmin, vmax, clip)
+
+    def __call__(self, value, clip=None):
+        # ignoring masked values and lotsa edge cases
+        x, y = [self.vmin, self.midpoint, self.vmax], [0, 0.5, 1]
+        return np.ma.masked_array(np.interp(value, x, y), np.isnan(value))
+
 
 def finterf(c_hat, Ksq):
     # interfacial free energy density
