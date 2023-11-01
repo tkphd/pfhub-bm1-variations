@@ -124,10 +124,19 @@ for golden in sorted(glob.glob(f"{goldir}/c_????????.npz")):
 
     _, t = parse("{}/c_{:d}.npz", golden)
 
+    print(f"  Interpolating {variant.capitalize()}s @ t = {t:,d} / {gold_T:,d}")
+
     with np.load(golden) as npz:
         gold_c = npz["c"]
 
-    print(f"  Interpolating {variant.capitalize()}s @ t = {t:,d} / {gold_T:,d}")
+    gold_stats = f"{goldir}/stats_{t:08d}.npz"
+
+    if not os.path.exists(gold_stats):
+        # compute autocorrelation, radial-avg
+        gold_cor = autocorrelation(gold_c)
+        gold_r, gold_μ = radial_profile(gold_cor)
+        gold_r = gold_h * np.array(gold_r)
+        np.savez_compressed(gold_stats, corr=gold_cor, r=gold_r, μ=gold_μ)
 
     for jobdir, (job_h, job_N, job_T) in jobs.items():
         terpdir = f"{jobdir}/interp"

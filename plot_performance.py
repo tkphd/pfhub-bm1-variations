@@ -38,6 +38,7 @@ res_plot = False
 
 for variant, ene in jobs.items():
     df = pd.read_csv(ene)
+    df.drop_duplicates(subset=None, inplace=True)
     label = f"{variant.capitalize()} IC"
 
     plt.figure(1)

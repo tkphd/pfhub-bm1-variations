@@ -222,6 +222,7 @@ for check in CheckpointStepper(start=t,
         if stopwatch(checkTime) > 86400:
             write_checkpoint(t, evolve_ch, energies, chkpt)
             checkTime = time.time()
+            energies = []
 
         _ = step.succeeded()
 

@@ -66,6 +66,7 @@ for dt, dirs in jobs.items():
         ene = f"{iodir}/ene.csv"
 
         df = pd.read_csv(ene)
+        df.drop_duplicates(subset=None, inplace=True)
         label = f"$\\Delta x = {dx}$"
         plt.plot(df["time"], df["free_energy"], label=label, zorder=priority)
 
