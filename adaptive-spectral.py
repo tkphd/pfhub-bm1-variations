@@ -22,14 +22,14 @@ cluster_job = bool("SLURM_PROCID" in os.environ)
 
 sys.path.append(os.path.dirname(__file__))
 
-from spectral import Evolver
+from spectral import Evolver, M, κ
 
 # Start the clock
 startTime = time.time()
 
 # System parameters & kinetic coefficients
 
-t_final = 1_000_000
+t_final = 1_500_000
 L = 200.
 π = np.pi
 
@@ -40,13 +40,12 @@ parser = ArgumentParser()
 parser.add_argument("variant", help="variant type",
                     choices=["original", "periodic", "window"])
 parser.add_argument("-x", "--dx", help="mesh resolution", type=float)
-parser.add_argument("-t", "--dt", help="initial time resolution", type=float)
 
 args = parser.parse_args()
 dx = args.dx
-dt = args.dt
+dt = dx**4 / (M * κ)
 
-iodir = f"{args.variant}/dt{dt:6.04f}_dx{dx:08.04f}"
+iodir = f"{args.variant}/dx{dx:08.04f}"
 chkpt = f"{iodir}/checkpoint.npz"
 
 if not os.path.exists(iodir):

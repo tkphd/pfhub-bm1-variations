@@ -10,6 +10,8 @@ import parse
 # identify gold standard variants
 
 goldirs = list(sorted(glob.glob("*/dt0.1250_dx000.0625", recursive=True)))
+if goldirs == []:
+    goldirs = list(sorted(glob.glob("*/dx000.0625", recursive=True)))
 
 # reset color cycle for full range of datasets
 plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.rainbow(np.linspace(0, 1, len(goldirs))))
@@ -19,7 +21,10 @@ plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.rainbow(np.linspace
 jobs = {}
 
 for iodir in goldirs:
-    variant = parse.parse("{}/dt0.1250_dx000.0625", str(iodir))[0]
+    try:
+        variant = parse.parse("{}/dt0.1250_dx000.0625", str(iodir))[0]
+    except TypeError:
+        variant = parse.parse("{}/dx000.0625", str(iodir))[0]
     jobs[variant] = os.path.join(iodir, "ene.csv")
 
 # plot the runtime performance

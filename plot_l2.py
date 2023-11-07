@@ -37,11 +37,14 @@ def elapsed(stopwatch):
     return np.ceil(time.time() - stopwatch).astype(int)
 
 
-def sim_details(dir):
-    _, dx = parse("dt{:6.04f}_dx{:08.04f}", dir)
+def sim_details(iodir):
+    _, dx = parse("{}dx{:08.04f}", iodir)
     Nx = np.rint(200. / dx).astype(int)
-    slices = sorted(glob.glob(f"{dir}/c_*.npz"))
-    _, t_max = parse("{}/c_{:08d}.npz", slices[-1])
+    slices = sorted(glob.glob(f"{iodir}/c_*.npz"))
+    try:
+        _, t_max = parse("{}/c_{:08d}.npz", slices[-1])
+    except IndexError:
+        t_max = 0
 
     return float(dx), int(Nx), int(t_max)
 

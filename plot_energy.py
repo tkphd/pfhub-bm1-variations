@@ -28,16 +28,21 @@ for result in sorted(glob.glob("../pfhub/1a_*_*.csv")):
 # survey spectral data
 
 jobs = {}
-
 dirs = sorted(glob.glob("dt?.????_dx???.????"))
 
-for iodir in dirs:
-    dt, dx = parse("dt{}_dx{}", iodir)
-    dt = str(dt)
-    if dt in jobs.keys():
-        jobs[dt].append(iodir)
-    else:
-        jobs[dt] = [iodir]
+if dirs is not None:
+    for iodir in dirs:
+        dt, dx = parse("dt{}_dx{}", iodir)
+        dt = str(dt)
+        jobs[dt] = {"dx": dx,
+                    "dir": iodir}
+else:
+    dirs = sorted(glob.glob("dx???.????"))
+    for iodir in dirs:
+        dx = parse("dx{}", iodir)
+        dt = "adaptive"
+        jobs[dt] = {"dx": dx,
+                    "dir": iodir}
 
 plt.figure(1, figsize=(10,8))
 
@@ -49,64 +54,66 @@ plt.ylim(ylim)
 
 # === Plot spectral results ===
 
-plt.title(f"\"{variant.capitalize()}\" IC: $\Delta t = {dt}$")
+plt.title(f"\"{variant.capitalize()}\" IC: adaptive $\Delta t$")
 plt.xlabel("Time $t$ / [a.u.]")
 plt.ylabel("Free energy $\\mathcal{F}$ / [a.u.]")
 
 plt.xscale("log")
 plt.yscale("log")
 
-for dt, dirs in jobs.items():
+for dt, details in jobs.items():
     print("")
+    priority = 10.0
 
-    for zord, iodir in enumerate(dirs):
-        priority = 10 - 9 * zord / len(dirs)
-        _, dx = parse("dt{:6.4f}_dx{:6.4f}", iodir)
+    dx = float(details["dx"])
+    iodir = details["dir"]
+    ene = f"{iodir}/ene.csv"
 
-        ene = f"{iodir}/ene.csv"
+    df = pd.read_csv(ene)
+    df.drop_duplicates(subset=None, inplace=True)
+    label = f"$\\Delta x = {dx}$"
+    plt.plot(df["time"], df["free_energy"], label=label, zorder=priority)
 
-        df = pd.read_csv(ene)
-        df.drop_duplicates(subset=None, inplace=True)
-        label = f"$\\Delta x = {dx}$"
-        plt.plot(df["time"], df["free_energy"], label=label, zorder=priority)
+    # indicate current time of the gold standard
+    if np.isclose(dx, 0.0625):
+        plt.plot(
+            (df["time"].iloc[-1], df["time"].iloc[-1]),
+            (df["free_energy"].iloc[-1], ylim[0]),
+            color="silver", linestyle="dotted", zorder=priority
+        )
 
-        # indicate current time of the gold standard
-        if np.isclose(dx, 0.0625):
-            plt.plot(
-                (df["time"].iloc[-1], df["time"].iloc[-1]),
-                (df["free_energy"].iloc[-1], ylim[0]),
-                color="silver", linestyle="dotted", zorder=priority
-            )
+    pbar = tqdm(sorted(glob.glob(f"{iodir}/c_*.npz")))
+    for npz in pbar:
+        pbar.set_description(iodir)
+        img = npz.replace("npz", "png")
 
-        pbar = tqdm(sorted(glob.glob(f"{iodir}/c_*.npz")))
-        for npz in pbar:
-            pbar.set_description(iodir)
-            img = npz.replace("npz", "png")
+        if not os.path.exists(img):
+            try:
+                c = np.load(npz)
+                if np.all(np.isfinite(c["c"])):
+                    _, _, t = parse("dt{}_dx{}/c_{}.npz", npz)
+                    if t is None:
+                        _, t = parse("dx{}/c_{}.npz", npz)
+                    t = int(t)
 
-            if not os.path.exists(img):
-                try:
-                    c = np.load(npz)
-                    if np.all(np.isfinite(c["c"])):
-                        _, _, t = parse("dt{}_dx{}/c_{}.npz", npz)
-                        t = int(t)
+                    plt.figure(2, figsize=(10, 8))
+                    plt.title(f"\"{variant.capitalize()}\" IC: $\\Delta x={dx}\\ @\\ t={t:,d}$")
+                    plt.xlabel("$x$ / [a.u.]")
+                    plt.ylabel("$y$ / [a.u.]")
+                    plt.colorbar(plt.imshow(c["c"], interpolation=None, origin="lower"))
+                    plt.savefig(img, dpi=400, bbox_inches="tight")
 
-                        plt.figure(2, figsize=(10, 8))
-                        plt.title(f"\"{variant.capitalize()}\" IC: $\\Delta x={dx},\\ \\Delta t={dt}\\ @\\ t={t:,d}$")
-                        plt.xlabel("$x$ / [a.u.]")
-                        plt.ylabel("$y$ / [a.u.]")
-                        plt.colorbar(plt.imshow(c["c"], interpolation=None, origin="lower"))
-                        plt.savefig(img, dpi=400, bbox_inches="tight")
+                    plt.close()
+            except BadZipFile:
+                pass
 
-                        plt.close()
-                except BadZipFile:
-                    pass
+            plt.figure(1)
 
-                plt.figure(1)
+        priority -= 0.5
 
-        gc.collect()
+    gc.collect()
 
+    # Render to PNG
     plt.legend(ncol=2, loc=3, fontsize=6)
 
-# Render to PNG
-
-plt.savefig(f"energy_{variant}_dt{dt}.png", dpi=400, bbox_inches="tight")
+plt.savefig(f"energy_{variant}_adaptive.png", dpi=400, bbox_inches="tight")
