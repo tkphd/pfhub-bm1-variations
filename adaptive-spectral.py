@@ -193,7 +193,7 @@ for check in CheckpointStepper(start=t,
                            limiting=False,
                            proportional=0.075,  # 0.075 default
                            integral=0.175,      # 0.175
-                           derivative=0.100):   # 0.100
+                           derivative=0.005):   # 0.100
         dt = step.size
         residual, swp = evolve_ch.solve(dt, sweeps=1)
         scaled_error = residual / 1e-3

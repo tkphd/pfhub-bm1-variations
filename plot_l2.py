@@ -38,13 +38,10 @@ def elapsed(stopwatch):
 
 
 def sim_details(iodir):
-    _, dx = parse("{}dx{:08.04f}", iodir)
+    _, dx = parse("{}{:08.04f}", iodir)
     Nx = np.rint(200. / dx).astype(int)
     slices = sorted(glob.glob(f"{iodir}/c_*.npz"))
-    try:
-        _, t_max = parse("{}/c_{:08d}.npz", slices[-1])
-    except IndexError:
-        t_max = 0
+    _, t_max = parse("{}/c_{:08d}.npz", slices[-1])
 
     return float(dx), int(Nx), int(t_max)
 
@@ -73,13 +70,14 @@ plt.rcParams["axes.prop_cycle"] = plt.cycler(
 
 # parse command-line flags
 parser = ArgumentParser()
-parser.add_argument("--dx",   type=float,
-                    help="Candidate Gold Standard resolution")
-parser.add_argument("--dt",   type=float, help="Timestep of interest")
+parser.add_argument("--dx", type=float,
+                            help="Candidate Gold Standard resolution")
+parser.add_argument("--dt", type=float,
+                            help="Timestep of interest")
 args = parser.parse_args()
 
 # get "gold standard" info
-goldir = f"dt{args.dt:6.04f}_dx{args.dx:08.04f}"
+goldir = glob.glob(f"*dx{args.dx:08.04f}")[0]
 gold_h, gold_N, gold_T = sim_details(goldir)
 
 if gold_N % 2 != 0:
@@ -115,7 +113,7 @@ sinterp = Interpolant((gold_N, gold_N))
 
 jobs = {}
 
-for job in sorted(glob.glob(f"dt{args.dt:6.04f}_dx???.????")):
+for job in sorted(glob.glob("*dx???.????")):
     stats = sim_details(job)
     if stats[0] > gold_h:
         jobs[job] = stats
@@ -186,11 +184,9 @@ for golden in sorted(glob.glob(f"{goldir}/c_????????.npz")):
                                         constrained_layout=True, sharex=True, sharey=True)
 
                 fig.suptitle(
-                    f"\"{variant.capitalize()}\" IC: $\\Delta x={job_h},\\ \\Delta t={args.dt}\\ @\\ t={t:,d}$")
+                    f"\"{variant.capitalize()}\" IC: $\\Delta x={job_h}\\ @\\ t={t:,d}$")
                 axs[0].set_xlabel("$x$ / [a.u.]")
                 axs[0].set_ylabel("$y$ / [a.u.]")
-
-                # c_bulk = job_refined[1:-2, 1:-2]
 
                 c_min = np.amin(job_refined)
                 c_avg = np.average(job_refined)

@@ -17,103 +17,111 @@ variant = os.path.basename(os.getcwd())
 # reset color cycle for full range of datasets
 plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.rainbow(np.linspace(0, 1, 20)))
 
-# load community submissions of note
-
-subs = {}
-
-for result in sorted(glob.glob("../pfhub/1a_*_*.csv")):
-    label = str(result).replace("../pfhub/1a_", "").replace(".csv", "")
-    subs[label] = pd.read_csv(result)
-
 # survey spectral data
 
 jobs = {}
-dirs = sorted(glob.glob("dt?.????_dx???.????"))
+dirs = sorted(glob.glob("*dx???.????"))
 
-if dirs is not None:
-    for iodir in dirs:
+for iodir in dirs:
+    if iodir.__contains__("dt"):
         dt, dx = parse("dt{}_dx{}", iodir)
-        dt = str(dt)
-        jobs[dt] = {"dx": dx,
-                    "dir": iodir}
-else:
-    dirs = sorted(glob.glob("dx???.????"))
-    for iodir in dirs:
-        dx = parse("dx{}", iodir)
-        dt = "adaptive"
-        jobs[dt] = {"dx": dx,
-                    "dir": iodir}
+    else:
+        dt = "0.0000"
+        _, dx = parse("{}{}", iodir)
+    dt = str(dt)
+    if dt in jobs.keys():
+        jobs[dt].append(iodir)
+    else:
+        jobs[dt] = [iodir]
 
-plt.figure(1, figsize=(10,8))
 
-xlim = (1, 1.5e6)
-ylim = (10, 350)
+x_lim = (1, 1e6)
+y_lim = (10, 350)
 
-plt.xlim(xlim)
-plt.ylim(ylim)
+for dt, dirs in jobs.items():
 
-# === Plot spectral results ===
+    # prepare free energy plot
 
-plt.title(f"\"{variant.capitalize()}\" IC: adaptive $\Delta t$")
-plt.xlabel("Time $t$ / [a.u.]")
-plt.ylabel("Free energy $\\mathcal{F}$ / [a.u.]")
+    plt.figure(1, figsize=(10,8))
+    plt.title(f"\"{variant.capitalize()}\" IC: Free Energy")
 
-plt.xscale("log")
-plt.yscale("log")
+    plt.xlabel("Time $t$ / [a.u.]")
+    plt.xlim(x_lim)
+    plt.xscale("log")
 
-for dt, details in jobs.items():
+    plt.ylabel("Free energy $\\mathcal{F}$ / [a.u.]")
+    plt.ylim(y_lim)
+    plt.yscale("log")
+
+    # prepare timestep plot
+
+    plt.figure(2, figsize=(10,8))
+    plt.title(f"\"{variant.capitalize()}\" IC: Timestep")
+
+    plt.xlabel("Time $t$ / [a.u.]")
+    plt.xlim(x_lim)
+
+    plt.ylabel("Timestep $\\Delta t$ / [a.u.]")
+    plt.yscale("log")
+
     print("")
-    priority = 10.0
 
-    dx = float(details["dx"])
-    iodir = details["dir"]
-    ene = f"{iodir}/ene.csv"
+    for zord, iodir in enumerate(dirs):
+        ene = f"{iodir}/ene.csv"
+        priority = 10 - 9 * zord / len(dirs)
+        _, dx = parse("{}{:08.04f}", iodir)
+        label = f"$\\Delta x = {dx}$"
 
-    df = pd.read_csv(ene)
-    df.drop_duplicates(subset=None, inplace=True)
-    label = f"$\\Delta x = {dx}$"
-    plt.plot(df["time"], df["free_energy"], label=label, zorder=priority)
+        df = pd.read_csv(ene)
+        df.drop_duplicates(subset=None, inplace=True)
 
-    # indicate current time of the gold standard
-    if np.isclose(dx, 0.0625):
-        plt.plot(
-            (df["time"].iloc[-1], df["time"].iloc[-1]),
-            (df["free_energy"].iloc[-1], ylim[0]),
-            color="silver", linestyle="dotted", zorder=priority
-        )
+        plt.figure(1)
+        plt.plot(df["time"], df["free_energy"], label=label, zorder=priority)
 
-    pbar = tqdm(sorted(glob.glob(f"{iodir}/c_*.npz")))
-    for npz in pbar:
-        pbar.set_description(iodir)
-        img = npz.replace("npz", "png")
+        # indicate current time of the gold standard
+        if np.isclose(dx, 0.0625):
+            plt.plot(
+                (df["time"].iloc[-1], df["time"].iloc[-1]),
+                (df["free_energy"].iloc[-1], y_lim[0]),
+                color="silver", linestyle="dotted", zorder=priority
+            )
 
-        if not os.path.exists(img):
-            try:
-                c = np.load(npz)
-                if np.all(np.isfinite(c["c"])):
-                    _, _, t = parse("dt{}_dx{}/c_{}.npz", npz)
-                    if t is None:
-                        _, t = parse("dx{}/c_{}.npz", npz)
-                    t = int(t)
+        plt.figure(2)
+        plt.plot(df["time"][1:], np.diff(df["time"]), label=label, zorder=priority)
 
-                    plt.figure(2, figsize=(10, 8))
-                    plt.title(f"\"{variant.capitalize()}\" IC: $\\Delta x={dx}\\ @\\ t={t:,d}$")
-                    plt.xlabel("$x$ / [a.u.]")
-                    plt.ylabel("$y$ / [a.u.]")
-                    plt.colorbar(plt.imshow(c["c"], interpolation=None, origin="lower"))
-                    plt.savefig(img, dpi=400, bbox_inches="tight")
+        pbar = tqdm(sorted(glob.glob(f"{iodir}/c_*.npz")))
+        for npz in pbar:
+            pbar.set_description(iodir)
+            img = npz.replace("npz", "png")
 
-                    plt.close()
-            except BadZipFile:
-                pass
+            if not os.path.exists(img):
+                try:
+                    c = np.load(npz)
+                    if np.all(np.isfinite(c["c"])):
+                        _, t = parse("{}/c_{}.npz", npz)
+                        t = int(t)
 
-            plt.figure(1)
+                        plt.figure(3, figsize=(10, 8))
+                        plt.title(f"\"{variant.capitalize()}\" IC: $\\Delta x={dx}\\ @\\ t={t:,d}$")
+                        plt.xlabel("$x$ / [a.u.]")
+                        plt.ylabel("$y$ / [a.u.]")
+                        plt.colorbar(
+                            plt.imshow(c["c"], interpolation=None, origin="lower")
+                        )
+                        plt.savefig(img, dpi=400, bbox_inches="tight")
+                        plt.close()
+                except BadZipFile:
+                    pass
 
-        priority -= 0.5
-
-    gc.collect()
+        gc.collect()
 
     # Render to PNG
+    plt.figure(1)
     plt.legend(ncol=2, loc=3, fontsize=6)
+    plt.savefig(f"energy_{variant}_dt{dt}.png", dpi=400, bbox_inches="tight")
+    plt.close()
 
-plt.savefig(f"energy_{variant}_adaptive.png", dpi=400, bbox_inches="tight")
+    plt.figure(2)
+    plt.legend(ncol=2, loc=3, fontsize=6)
+    plt.savefig(f"timestep_{variant}_dt{dt}.png", dpi=400, bbox_inches="tight")
+    plt.close()
