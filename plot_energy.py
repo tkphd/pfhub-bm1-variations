@@ -59,7 +59,7 @@ for dt, dirs in jobs.items():
     plt.title(f"\"{variant.capitalize()}\" IC: Timestep")
 
     plt.xlabel("Time $t$ / [a.u.]")
-    plt.xlim(x_lim)
+    plt.xscale("asinh")
 
     plt.ylabel("Timestep $\\Delta t$ / [a.u.]")
     plt.yscale("log")
@@ -122,6 +122,6 @@ for dt, dirs in jobs.items():
     plt.close()
 
     plt.figure(2)
-    plt.legend(ncol=2, loc=3, fontsize=6)
+    plt.legend(ncol=2, loc=2, fontsize=6)
     plt.savefig(f"timestep_{variant}_dt{dt}.png", dpi=400, bbox_inches="tight")
     plt.close()
