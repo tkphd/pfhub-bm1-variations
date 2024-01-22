@@ -41,8 +41,10 @@ parser = ArgumentParser()
 
 parser.add_argument("variant", help="variant type",
                     choices=["noise", "original", "periodic", "tophat", "window", "winner"])
-parser.add_argument("-x", "--dx", help="mesh resolution", type=float)
-parser.add_argument("-t", "--dt", help="time resolution", type=float)
+parser.add_argument("-x", "--dx", type=float,
+                    help="mesh resolution: gold standard Δx=0.0625")
+parser.add_argument("-t", "--dt", type=float,
+                    help="time resolution: gold standard Δt=0.1250")
 
 args = parser.parse_args()
 dx = args.dx
