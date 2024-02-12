@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import numpy.linalg as LA
 import os
-from parse import parse
+from parse import compile
 import time
 try:
     from rich import print
@@ -29,6 +29,14 @@ sys.path.append(os.path.dirname(__file__))
 from spectral import FourierInterpolant as Interpolant
 from spectral import MidpointNormalize, autocorrelation, radial_profile
 
+# my goofy folder naming conventions
+old_pattern = "dt?.????_dx???.????"
+new_pattern = "dx???.????"
+
+parse_dt  = compile("dt{dt:6f}{suffix}")
+parse_dx  = compile("{prefix}x{dx:8f}")
+parse_dtx = compile("dt{dt:6f}_dx{dx:8f}")
+parse_npz = compile("{prefix}/c_{t:d}.npz")
 
 def elapsed(stopwatch):
     """
@@ -38,12 +46,18 @@ def elapsed(stopwatch):
 
 
 def sim_details(iodir):
-    _, dx = parse("{}{:08.04f}", iodir)
+    dx = parse_dx.parse(iodir)["dx"]
     Nx = np.rint(200. / dx).astype(int)
-    slices = sorted(glob.glob(f"{iodir}/c_*.npz"))
-    _, t_max = parse("{}/c_{:08d}.npz", slices[-1])
 
-    return float(dx), int(Nx), int(t_max)
+    slices = sorted(glob.glob(f"{iodir}/c_*.npz"))
+
+    t_max = parse_npz.parse(slices[-1])["t"]
+
+    return {
+        "dx": float(dx),
+        "Nx": int(Nx),
+        "t_max": int(t_max)
+    }
 
 
 def log_hn(h, n, b=np.log(1000)):
@@ -76,9 +90,15 @@ parser.add_argument("--dt", type=float,
                             help="Timestep of interest")
 args = parser.parse_args()
 
+dirs = sorted(glob.glob(old_pattern) + glob.glob(new_pattern))
+
 # get "gold standard" info
-goldir = glob.glob(f"*dx{args.dx:08.04f}")[0]
-gold_h, gold_N, gold_T = sim_details(goldir)
+goldir = dirs[0]
+gold_par = sim_details(goldir)
+
+gold_h = gold_par["dx"]
+gold_N = gold_par["Nx"]
+gold_T = gold_par["t_max"]
 
 if gold_N % 2 != 0:
     raise ValueError("Reference mesh size is not even!")
@@ -113,17 +133,18 @@ sinterp = Interpolant((gold_N, gold_N))
 
 jobs = {}
 
-for job in sorted(glob.glob("*dx???.????")):
+for job in dirs:
     stats = sim_details(job)
-    if stats[0] > gold_h:
+    if stats["dx"] > gold_h:
         jobs[job] = stats
 
+gold_npzs = sorted(glob.glob(f"{goldir}/c_????????.npz"))
 
-for golden in sorted(glob.glob(f"{goldir}/c_????????.npz")):
+for golden in gold_npzs:
     resolutions = []
     norms = []
 
-    _, t = parse("{}/c_{:d}.npz", golden)
+    t = parse_npz.parse(golden)["t"]
 
     print(f"  Interpolating {variant.capitalize()}s @ t = {t:,d} / {gold_T:,d}")
 
@@ -139,7 +160,10 @@ for golden in sorted(glob.glob(f"{goldir}/c_????????.npz")):
         gold_r = gold_h * np.array(gold_r)
         np.savez_compressed(gold_stats, corr=gold_cor, r=gold_r, μ=gold_μ)
 
-    for jobdir, (job_h, job_N, job_T) in jobs.items():
+    for jobdir, job_par in jobs.items():
+        job_h = job_par["dx"]
+        job_N = job_par["Nx"]
+        job_T = job_par["t_max"]
         terpdir = f"{jobdir}/interp"
         if not os.path.exists(terpdir):
             os.mkdir(terpdir)
@@ -223,7 +247,7 @@ for golden in sorted(glob.glob(f"{goldir}/c_????????.npz")):
     plt.figure(1)
     plt.plot(resolutions, norms, marker="o", label=f"$t={t:,d}$")
 
-
-plt.legend(ncol=6, loc="best")
+if len(gold_npzs) < 50:
+    plt.legend(ncol=6, loc="best")
 plt.savefig(png, dpi=400, bbox_inches="tight")
 print(f"\n  Saved image to {png}\n")

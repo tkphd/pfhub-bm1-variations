@@ -24,7 +24,7 @@ if not cluster_job:
 
 sys.path.append(os.path.dirname(__file__))
 
-from spectral import Evolver
+from spectral import Evolver, progression
 
 # Start the clock
 startTime = time.time()
@@ -58,23 +58,6 @@ if not os.path.exists(iodir):
 
 def stopwatch(clock):
     return np.round(time.time() - clock, 2)
-
-
-def progression(start=0):
-    """
-    Generate a sequence of numbers that progress in logarithmic space:
-    1, 2,.. 10, 20,.. 100, 200,.. 1000, 2000, etc.
-    but *don't* store them all in memory!
-
-    Thanks to @reid-a for contributing this generator.
-    """
-    value = start
-    delta = 1 if value == 0 else int(10**np.floor(np.log10(value)))
-    while True:
-        value += delta
-        yield value
-        if (value == 10 * delta):
-            delta = value
 
 
 def start_report():

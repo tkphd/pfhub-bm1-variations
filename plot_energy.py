@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
-from parse import parse
+from parse import compile
 from tqdm import tqdm
 from zipfile import BadZipFile
 
@@ -17,25 +17,32 @@ variant = os.path.basename(os.getcwd())
 # reset color cycle for full range of datasets
 plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.rainbow(np.linspace(0, 1, 20)))
 
+# my goofy folder naming conventions
+old_pattern = "dt?.????_dx???.????"
+new_pattern = "dx???.????"
+parse_old = compile("dt{dt:6f}_dx{dx:8f}")
+parse_new = compile("dx{dx:8f}")
+parse_npz = compile("{}/c_{}.npz")
+
 # survey spectral data
 
+dirs = sorted(np.concatenate([glob.glob(old_pattern), glob.glob(new_pattern)]))
+
 jobs = {}
-dirs = sorted(glob.glob("*dx???.????"))
 
 for iodir in dirs:
-    if iodir.__contains__("dt"):
-        dt, dx = parse("dt{}_dx{}", iodir)
+    deets = parse_old.parse(iodir)
+    if deets is not None:
+        dt = deets["dt"]
     else:
         dt = "0.0000"
-        _, dx = parse("{}{}", iodir)
     dt = str(dt)
     if dt in jobs.keys():
         jobs[dt].append(iodir)
     else:
         jobs[dt] = [iodir]
 
-
-x_lim = (1, 1e6)
+x_lim = (0.0625, 1e6)
 y_lim = (10, 350)
 
 for dt, dirs in jobs.items():
@@ -69,17 +76,21 @@ for dt, dirs in jobs.items():
     for zord, iodir in enumerate(dirs):
         ene = f"{iodir}/ene.csv"
         priority = 10 - 9 * zord / len(dirs)
-        _, dx = parse("{}{:08.04f}", iodir)
+        deets = parse_old.parse(iodir)
+        if deets is None:
+            deets = parse_new.parse(iodir)
+
+        dx = deets["dx"]
+
         label = f"$\\Delta x = {dx}$"
 
         df = pd.read_csv(ene)
-        df.drop_duplicates(subset=None, inplace=True)
 
         plt.figure(1)
         plt.plot(df["time"], df["free_energy"], label=label, zorder=priority)
 
         # indicate current time of the gold standard
-        if np.isclose(dx, 0.0625):
+        if np.isclose(float(dx), 0.0625):
             plt.plot(
                 (df["time"].iloc[-1], df["time"].iloc[-1]),
                 (df["free_energy"].iloc[-1], y_lim[0]),
@@ -98,8 +109,8 @@ for dt, dirs in jobs.items():
                 try:
                     c = np.load(npz)
                     if np.all(np.isfinite(c["c"])):
-                        _, t = parse("{}/c_{}.npz", npz)
-                        t = int(t)
+                        deets = parse_npz.parse(npz)
+                        t = int(deets[1])
 
                         plt.figure(3, figsize=(10, 8))
                         plt.title(f"\"{variant.capitalize()}\" IC: $\\Delta x={dx}\\ @\\ t={t:,d}$")

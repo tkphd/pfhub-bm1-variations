@@ -116,7 +116,7 @@ class Evolver:
                                 + κ * self.Ksq
 
         # dealias the flux capacitor
-        self.nyquist_mode = 2.0 * k.max() / 3
+        self.nyquist_mode = k.max() / 2
         self.alias_mask = np.array( (np.abs(self.K[0]) < self.nyquist_mode) \
                                   * (np.abs(self.K[1]) < self.nyquist_mode),
                                     dtype=bool)
@@ -210,3 +210,32 @@ class FourierInterpolant:
         u_hat = self.pad(v_hat)
         scale = np.prod(np.array(u_hat.shape)) / np.prod(np.array(v.shape))
         return scale * np.fft.ifftn(np.fft.ifftshift(u_hat)).real
+
+
+def progression(start=0):
+    """
+    Generate a sequence of numbers that progress in logarithmic space:
+    1, 2,.. 10, 20,.. 100, 200,.. 1000, 2000, etc.
+    but *don't* store them all in memory!
+
+    Thanks to @reid-a for contributing this generator.
+    """
+    if start == 0:
+        value = 0
+        delta = 1
+    else:
+        """
+        When progression() is called, it will increment value,
+        so we have to under-shoot
+        """
+        delta = 10**np.floor(np.log10(start)).astype(int)
+        value = 10**np.ceil(np.log10(start)).astype(int)
+        while value > start:
+            value -= delta
+        print(f"Δ = {delta}, t = {value}")
+
+    while True:
+        value += delta
+        yield value
+        if (value == 10 * delta):
+            delta = value
