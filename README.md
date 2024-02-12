@@ -4,15 +4,27 @@ Source code (Python and Jupyter) for PFHub BM 1a (periodic spinodal
 decomposition) using Steppyngstounes and a semi-implicit spectral solver,
 with variations on the initial condition.
 
-* **ori** is the "original" IC, not periodic at all
-* **per** is a purely periodic IC, with coefficients as close to the original
-  as could be managed
+* **ori** is the "original" IC, not periodic at all at the boundaries.
+* **per** is a purely periodic IC, with coefficients replaced by even multiples
+  of $\pi/L$ as close to the original values as could be managed. This is
+  numerically better-behaved, but produces a "boring" microstructure.
 * **hat** is the original IC everywhere except a zone within $w$ of the
-  boundary, where $c$ smoothly steps to ½.
+  boundary, where $c$ smoothly steps to ½. It is, unfortunately, qualitatively
+  no different from the original IC in terms of spectral convergence.
+* **win** is the original IC everywhere, with a [Hann window][hann] dropped on
+  top to produce a system that can be represented using only trigonometric
+  functions. It is currently the "best" IC for spectral solvers.
 
 The coefficients are explored in `initial_conditions.py`.
 Some discussion and comparison of the initial conditions is in the `slides`
 folder.
+
+## Key Files
+
+1. Most of the interesting mathematical details are implemented in
+   [`spectral.py`](./spectral.py).
+2. The initial conditions and time-stepping loop are implemented in
+   [`spectral-bm1a-variations.py`](./spectral-bm1a-variations.py).
 
 ## Discretization
 
@@ -174,3 +186,6 @@ converged.
 * _Controlling the accuracy of unconditionally stable algorithms in the
   Cahn-Hilliard equation_,
   DOI: [10.1103/PhysRevE.75.017702](https://doi.org/10.1103/PhysRevE.75.017702)
+
+<!-- links -->
+[hann]: https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows
