@@ -43,12 +43,12 @@ parse_dx  = compile("{prefix}x{dx:8f}")
 parse_dtx = compile("dt{dt:6f}_dx{dx:8f}")
 parse_npz = compile("{prefix}/c_{t:8d}.npz")
 
-def correlate(signal):
+def correlate(data):
     """Compute the auto-correlation / 2-point statistics of a field variable"""
-    fft = np.fft.fftn(signal) - signal.mean()
+    signal = data - data.mean()
+    fft = np.fft.fftn(signal)
     psd = fft * np.conjugate(fft)
-    cor = np.fft.ifftn(psd).real  # / (np.var(signal) * signal.size)
-    return cor
+    return np.fft.ifftn(psd).real / (np.var(signal) * signal.size)
 
 
 def elapsed(stopwatch):
@@ -159,6 +159,8 @@ for job in dirs:
 gold_npzs = [f"{goldir}/c_{x:08d}.npz" for x in range(11)]
 
 for golden in gold_npzs:
+    t = parse_npz.parse(golden)["t"]
+
     resolutions = []
     norms = []
 
@@ -168,7 +170,6 @@ for golden in gold_npzs:
     try:
         with np.load(golden) as npz:
             gold_c = npz["c"]
-            t = parse_npz.parse(golden)["t"]
     except FileNotFoundError:
         gold_c = None
         pass
@@ -190,7 +191,12 @@ for golden in gold_npzs:
             gold_cor = correlate(gold_c)
             gold_r, gold_μ = radial_profile(gold_cor)
             gold_r = gold_h * np.array(gold_r)
-            np.savez_compressed(gold_stats, corr=gold_cor, r=gold_r, μ=gold_μ)
+            np.savez_compressed(gold_stats,
+                                t=t,
+                                dx=gold_h,
+                                auto=gold_cor,
+                                r=gold_r,
+                                μ=gold_μ)
         else:
             try:
                 with np.load(gold_stats) as npz:
@@ -252,7 +258,10 @@ for golden in gold_npzs:
 
                     job_refined = sinterp.upsample(job_c)
                     ell_two = LA.norm(gold_c - job_refined)
-                    np.savez_compressed(refined, c=job_refined, l2=ell_two)
+                    np.savez_compressed(refined,
+                                        t=t,
+                                        c=job_refined,
+                                        l2=ell_two)
                 except FileNotFoundError or zipfile.BadZipFile:
                     job_refined = None
                     print("failed.")
@@ -271,7 +280,12 @@ for golden in gold_npzs:
                 job_cor = correlate(job_refined)
                 job_r, job_μ = radial_profile(job_cor)
                 job_r = job_h * np.array(job_r)
-                np.savez_compressed(job_stats, corr=job_cor, r=job_r, μ=job_μ)
+                np.savez_compressed(job_stats,
+                                    t=t,
+                                    dx=job_h,
+                                    auto=job_cor,
+                                    r=job_r,
+                                    μ=job_μ)
             else:
                 try:
                     with np.load(job_stats) as npz:
@@ -298,7 +312,9 @@ for golden in gold_npzs:
                 c_min = np.amin(job_cor)
                 c_avg = np.average(job_cor)
                 c_max = np.amax(job_cor)
-                c_nrm = MidpointNormalize(midpoint=c_avg, vmin=c_min, vmax=c_max)
+                c_nrm = MidpointNormalize(midpoint=c_avg,
+                                          vmin=c_min,
+                                          vmax=c_max)
 
                 ax.set_title(r"$c$")
                 fig.colorbar(

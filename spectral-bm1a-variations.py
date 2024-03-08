@@ -70,7 +70,10 @@ def start_report():
 
 
 def write_checkpoint(t, evolver, energies, fname):
-    np.savez_compressed(fname, c=evolver.c, c_old=evolver.c_old)
+    np.savez_compressed(fname,
+                        t=t,
+                        c=evolver.c,
+                        c_old=evolver.c_old)
 
     if energies is not None:
         with open(f"{iodir}/ene.csv", "a") as fh:
