@@ -14,6 +14,7 @@ import glob
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.linalg as LA
+
 import os
 from parse import compile
 import time
@@ -21,9 +22,10 @@ try:
     from rich import print
 except ImportError:
     pass
+import sys
+from zipfile import BadZipFile
 
 # import from `spectral.py` in same folder as the script
-import sys
 sys.path.append(os.path.dirname(__file__))
 
 from spectral import FourierInterpolant as Interpolant
@@ -144,14 +146,18 @@ for golden in gold_npzs:
     resolutions = []
     norms = []
 
-    t = parse_npz.parse(golden)["t"]
+    try:
+        t = parse_npz.parse(golden)["t"]
 
-    print(f"  Interpolating {variant.capitalize()}s @ t = {t:,d} / {gold_T:,d}")
+        print(f"  Interpolating {variant.capitalize()}s @ t = {t:,d} / {gold_T:,d}")
 
-    with np.load(golden) as npz:
-        gold_c = npz["c"]
+        with np.load(golden) as npz:
+            gold_c = npz["c"]
 
-    gold_stats = f"{goldir}/stats_{t:08d}.npz"
+            gold_stats = f"{goldir}/stats_{t:08d}.npz"
+    except BadZipFile:
+        print(f"Unable to load {golden}")
+        sys.exit()
 
     if not os.path.exists(gold_stats):
         # compute autocorrelation, radial-avg
@@ -176,6 +182,7 @@ for golden in gold_npzs:
         job_refined = None
         ell_two = None
         watch = None
+        startNorm = time.time()
 
         if not os.path.exists(refined):
             print(f"    {jobdir}:", end=" ")
@@ -183,12 +190,9 @@ for golden in gold_npzs:
                 with np.load(f"{jobdir}/c_{t:08d}.npz") as npz:
                     job_c = npz["c"]
 
-                startNorm = time.time()
                 job_refined = sinterp.upsample(job_c)
                 ell_two = LA.norm(gold_c - job_refined)
                 np.savez_compressed(refined, c=job_refined, l2=ell_two)
-                watch = elapsed(startNorm)
-                print(f"ℓ² = {ell_two:.02e}  ({watch:2d} s)")
             except FileNotFoundError:
                 job_refined = None
                 ell_two = None
@@ -242,12 +246,15 @@ for golden in gold_npzs:
                 job_r = job_h * np.array(job_r)
                 np.savez_compressed(job_stats, corr=job_cor, r=job_r, μ=job_μ)
 
+        watch = elapsed(startNorm)
+        print(f"      ℓ² = {ell_two:.02e}  ({watch:2d} s)")
+
         gc.collect()
 
     plt.figure(1)
     plt.plot(resolutions, norms, marker="o", label=f"$t={t:,d}$")
 
 if len(gold_npzs) < 50:
-    plt.legend(ncol=6, loc="best")
+    plt.legend(ncol=3, loc=3, fontsize=9)
 plt.savefig(png, dpi=400, bbox_inches="tight")
 print(f"\n  Saved image to {png}\n")

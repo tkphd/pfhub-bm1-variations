@@ -69,7 +69,7 @@ def autocorrelation(data):
     """Compute the auto-correlation / 2-point statistics of a field variable"""
     signal = data - np.mean(data)
     fft = np.fft.fftn(signal)
-    inv = np.fft.fftshift(np.fft.ifftn(np.absolute(fft)**2))
+    inv = np.fft.fftshift(np.fft.ifftn(fft * np.conjugate(fft)))
     # cor = np.fft.ifftshift(inv).real / (np.var(signal) * signal.size)
     cor = inv.real / (np.var(signal) * signal.size)
     return cor
