@@ -212,6 +212,22 @@ class FourierInterpolant:
         return scale * np.fft.ifftn(np.fft.ifftshift(u_hat)).real
 
 
+def log_hn(h, n, b=np.log(1000)):
+    """
+    Support function for plotting 𝒪(hⁿ) on a log-log scale:
+      log(y) = n log(h) + b
+             = log(hⁿ) + b
+          y  = hⁿ exp(b)
+
+    Inputs
+    ------
+    h: array of dx values
+    n: order of accuracy
+    b: intercept
+    """
+    return np.exp(b) * h**n
+
+
 def progression(start=0):
     """
     Generate a sequence of numbers that progress in logarithmic space:

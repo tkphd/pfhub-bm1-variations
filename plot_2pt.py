@@ -31,8 +31,7 @@ import zipfile
 # import from `spectral.py` in same folder as the script
 sys.path.append(os.path.dirname(__file__))
 
-from spectral import FourierInterpolant as Interpolant
-from spectral import MidpointNormalize, radial_profile
+from spectral import FourierInterpolant, log_hn, radial_profile
 
 # my goofy folder naming conventions
 old_pattern = "dt?.????_dx???.????"
@@ -73,20 +72,50 @@ def sim_details(iodir):
     }
 
 
-def log_hn(h, n, b=np.log(1000)):
-    """
-    Support function for plotting 𝒪(hⁿ) on a log-log scale:
-      log(y) = n log(h) + b
-             = log(hⁿ) + b
-          y  = hⁿ exp(b)
+def upsampled(c_npz, k_npz, mesh_h=0.0125, interpolant=None):
+    hi_res = None
+    hi_fft = None
+    mesh_N = int(3200 * mesh_h / 0.0625)
 
-    Inputs
-    ------
-    h: array of dx values
-    n: order of accuracy
-    b: intercept
-    """
-    return np.exp(b) * h**n
+    if interpolant is None:
+        interpolant = FourierInterpolant((mesh_N, mesh_N))
+
+    if not os.path.exists(k_npz):
+        # Upsample and save spectrally interpolated mesh data
+        try:
+            with np.load(c_npz) as npz:
+                lo_res = npz["c"]
+
+            hi_res = interpolant.upsample(lo_res)
+            signal = hi_res - hi_res.mean()
+            hi_fft = np.fft.fftn(signal)
+            hi_psd = hi_fft * np.conjugate(hi_fft)
+            hi_cor = np.fft.ifftn(hi_psd).real / (np.var(signal) * signal.size)
+            cor_r, cor_μ = radial_profile(hi_cor)
+            cor_r = gold_h * np.array(cor_r)
+
+            np.savez_compressed(k_npz,
+                                t=t,
+                                dx=mesh_h,
+                                c=hi_res,
+                                k=hi_fft,
+                                p=hi_psd,
+                                a=hi_cor,
+                                r=cor_r,
+                                μ=cor_μ)
+        except FileNotFoundError or zipfile.BadZipFile:
+            print("failed (no data).")
+            pass
+    else:
+        try:
+            with np.load(k_npz) as npz:
+                hi_res = npz["c"]
+                hi_cor = npz["a"]
+        except FileNotFoundError or zipfile.BadZipFile:
+            print("failed (bad stored data).")
+            pass
+
+    return hi_res, hi_cor
 
 
 variant = os.path.basename(os.getcwd())
@@ -143,9 +172,15 @@ plt.plot(N, log_hn(N, -2, np.log(6e3)), color="silver",
 plt.plot(N, log_hn(N, -3, np.log(8e3)), color="silver",
          label=r"$\mathcal{O}(h^3)$", zorder=0, linestyle="dashdot")
 
-# Interpolate!
 
-sinterp = Interpolant((gold_N, gold_N))
+# === Interpolate! ===
+
+mesh_h = min(2**(-5), gold_h)
+mesh_N = int(gold_N * gold_h / mesh_h)
+sinterp = FourierInterpolant((mesh_N, mesh_N))
+
+if not os.path.exists(f"{goldir}/interp"):
+    os.mkdir(f"{goldir}/interp")
 
 jobs = {}
 
@@ -160,173 +195,39 @@ gold_npzs = [f"{goldir}/c_{x:08d}.npz" for x in range(11)]
 
 for golden in gold_npzs:
     t = parse_npz.parse(golden)["t"]
+    kolden = f"{goldir}/interp/k_{t:08d}.npz"
 
     resolutions = []
     norms = []
 
-    gold_cor = None
-    gold_c = None
+    _, gold_cor = upsampled(golden, kolden, mesh_h, sinterp)
 
-    try:
-        with np.load(golden) as npz:
-            gold_c = npz["c"]
-    except FileNotFoundError:
-        gold_c = None
-        pass
-    except zipfile.BadZipFile:
-        gold_c = None
-        pass
-
-    if gold_c is not None:
+    if gold_cor is not None:
         print(f"  Interpolating {variant.capitalize()}s @ t = {t:,d} / {gold_T:,d}")
-
-        gold_stats = f"{goldir}/interp/stats_{t:08d}.npz"
-        gold_png = gold_stats.replace("npz", "png")
-
-        if not os.path.exists(f"{goldir}/interp"):
-            os.mkdir(f"{goldir}/interp")
-
-        if not os.path.exists(gold_stats):
-            # compute autocorrelation, radial-avg
-            gold_cor = correlate(gold_c)
-            gold_r, gold_μ = radial_profile(gold_cor)
-            gold_r = gold_h * np.array(gold_r)
-            np.savez_compressed(gold_stats,
-                                t=t,
-                                dx=gold_h,
-                                auto=gold_cor,
-                                r=gold_r,
-                                μ=gold_μ)
-        else:
-            try:
-                with np.load(gold_stats) as npz:
-                    gold_cor = npz["corr"]
-            except FileNotFoundError or zipfile.BadZipFile:
-                gold_cor = None
-                pass
-
-        if gold_cor is not None and not os.path.exists(gold_png):
-            fig, ax = plt.subplots(1, 1, figsize=(5, 4),
-                                   constrained_layout=True, sharex=True, sharey=True)
-
-            fig.suptitle(
-                f"\"{variant.capitalize()}\" IC: Autocorr, $\\Delta x={gold_h}\\ @\\ t={t:,d}$")
-            ax.set_xlabel("$x$ / [a.u.]")
-            ax.set_ylabel("$y$ / [a.u.]")
-
-            c_min = np.amin(gold_cor)
-            c_avg = np.average(gold_cor)
-            c_max = np.amax(gold_cor)
-            c_nrm = MidpointNormalize(midpoint=c_avg, vmin=c_min, vmax=c_max)
-
-            ax.set_title(r"$c$")
-            fig.colorbar(
-                ax.imshow(gold_cor, cmap="coolwarm", clim=(c_min, c_max),
-                          norm=c_nrm, interpolation=None, origin="lower")
-            )
-
-            fig.savefig(gold_png, dpi=400, bbox_inches="tight")
-            plt.close(fig)
-
 
         for jobdir, job_par in jobs.items():
             startNorm = time.time()
-            watch   = None
-
-            job_h = job_par["dx"]
-            job_N = job_par["Nx"]
-            job_T = job_par["t_max"]
-
-            job_refined = None
-            job_cor = None
-            ell_two = None
+            print(f"    {jobdir}:", end=" ")
 
             terpdir = f"{jobdir}/interp"
             if not os.path.exists(terpdir):
                 os.mkdir(terpdir)
 
-            refined   = f"{terpdir}/k_{t:08d}_h{gold_h:6.04f}.npz"
-            job_stats = f"{terpdir}/stats_{t:08d}_h{gold_h:6.04f}.npz"
-            stats_png = job_stats.replace("npz", "png")
+            job_N = job_par["Nx"]
 
-            print(f"    {jobdir}:", end=" ")
+            job_c_npz = f"{jobdir}/c_{t:08d}.npz"
+            job_k_npz = f"{jobdir}/interp/c_{t:08d}.npz"
 
-            if not os.path.exists(refined):
-                try:
-                    with np.load(f"{jobdir}/c_{t:08d}.npz") as npz:
-                        job_c = npz["c"]
-
-                    job_refined = sinterp.upsample(job_c)
-                    ell_two = LA.norm(gold_c - job_refined)
-                    np.savez_compressed(refined,
-                                        t=t,
-                                        c=job_refined,
-                                        l2=ell_two)
-                except FileNotFoundError or zipfile.BadZipFile:
-                    job_refined = None
-                    print("failed.")
-                    pass
-            else:
-                try:
-                    with np.load(refined) as npz:
-                        job_refined = npz["c"]
-                except FileNotFoundError or zipfile.BadZipFile:
-                    job_refined = None
-                    print("failed.")
-                    pass
-
-            if (job_refined is not None) and (not os.path.exists(job_stats)):
-                # compute autocorrelation, radial-avg
-                job_cor = correlate(job_refined)
-                job_r, job_μ = radial_profile(job_cor)
-                job_r = job_h * np.array(job_r)
-                np.savez_compressed(job_stats,
-                                    t=t,
-                                    dx=job_h,
-                                    auto=job_cor,
-                                    r=job_r,
-                                    μ=job_μ)
-            else:
-                try:
-                    with np.load(job_stats) as npz:
-                        job_cor = npz["corr"]
-                except FileNotFoundError or zipfile.BadZipFile:
-                    job_cor = None
-                    print("failed.")
-                    pass
+            _, job_cor = upsampled(job_c_npz, job_k_npz, mesh_h, sinterp)
 
             if gold_cor is not None and job_cor is not None:
                 ell_two = LA.norm(gold_cor - job_cor)
+
                 resolutions.append(job_N)
                 norms.append(ell_two)
 
-            if job_cor is not None and not os.path.exists(stats_png):
-                fig, ax = plt.subplots(1, 1, figsize=(5, 4),
-                                       constrained_layout=True, sharex=True, sharey=True)
-
-                fig.suptitle(
-                    f"\"{variant.capitalize()}\" IC: Autocorr, $\\Delta x={job_h}\\ @\\ t={t:,d}$")
-                ax.set_xlabel("$x$ / [a.u.]")
-                ax.set_ylabel("$y$ / [a.u.]")
-
-                c_min = np.amin(job_cor)
-                c_avg = np.average(job_cor)
-                c_max = np.amax(job_cor)
-                c_nrm = MidpointNormalize(midpoint=c_avg,
-                                          vmin=c_min,
-                                          vmax=c_max)
-
-                ax.set_title(r"$c$")
-                fig.colorbar(
-                    ax.imshow(job_cor, cmap="coolwarm", clim=(c_min, c_max),
-                              norm=c_nrm, interpolation=None, origin="lower")
-                )
-
-                fig.savefig(stats_png, dpi=400, bbox_inches="tight")
-                plt.close(fig)
-
-            watch = elapsed(startNorm)
-            print(f" ℓ² = {ell_two:.02e}  ({watch:2d} s)")
+                watch = elapsed(startNorm)
+                print(f" ℓ² = {ell_two:.02e}  ({watch:2d} s)")
 
             gc.collect()
 
