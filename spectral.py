@@ -30,7 +30,7 @@ class MidpointNormalize(matplotlib.colors.Normalize):
 
 def finterf(c_hat, Ksq):
     # interfacial free energy density
-    return κ * np.fft.ifft2(Ksq * c_hat**2).real
+    return κ * np.fft.ifftn(Ksq * c_hat**2).real
 
 
 def fbulk(c):
@@ -48,11 +48,11 @@ def dfdc_nonlinear(c):
 
 
 def c_x(c_hat, K):
-    return np.fft.ifft2(c_hat * 1j * K[0]).real
+    return np.fft.ifftn(c_hat * 1j * K[0]).real
 
 
 def c_y(c_hat, K):
-    return np.fft.ifft2(c_hat * 1j * K[1]).real
+    return np.fft.ifftn(c_hat * 1j * K[1]).real
 
 
 def free_energy(c, c_hat, K, dx):
@@ -100,7 +100,7 @@ class Evolver:
         self.c_old = c_old.copy()
         self.c_sweep = np.ones_like(self.c)
 
-        self.c_hat = np.fft.fft2(self.c)
+        self.c_hat = np.fft.fftn(self.c)
         self.c_hat_prev = np.ones_like(self.c_hat)
         self.c_hat_old = self.c_hat.copy()
 
@@ -115,11 +115,11 @@ class Evolver:
         self.linear_coefficient = 2 * ρ * (α**2 + 4 * α * β + β**2) \
                                 + κ * self.Ksq
 
-        # dealias the flux capacitor
-        self.nyquist_mode = k.max() / 2
-        self.alias_mask = np.array( (np.abs(self.K[0]) < self.nyquist_mode) \
-                                  * (np.abs(self.K[1]) < self.nyquist_mode),
-                                    dtype=bool)
+        # # dealias the flux capacitor
+        # self.nyquist_mode = k.max() / 2
+        # self.alias_mask = np.array( (np.abs(self.K[0]) < self.nyquist_mode) \
+        #                           * (np.abs(self.K[1]) < self.nyquist_mode),
+        #                             dtype=bool)
 
 
     def free_energy(self):
@@ -134,11 +134,12 @@ class Evolver:
     def sweep(self, numer_coeff, denom_coeff):
         self.c_hat_prev[:] = self.c_hat
 
-        self.dfdc_hat[:] = self.alias_mask * np.fft.fft2(dfdc_nonlinear(self.c_sweep))
+        # self.dfdc_hat[:] = self.alias_mask * np.fft.fftn(dfdc_nonlinear(self.c_sweep))
+        self.dfdc_hat[:] = np.fft.fftn(dfdc_nonlinear(self.c_sweep))
 
         self.c_hat[:] = (self.c_hat_old - numer_coeff * self.dfdc_hat) / denom_coeff
 
-        self.c[:] = np.fft.ifft2(self.c_hat).real
+        self.c[:] = np.fft.ifftn(self.c_hat).real
 
         return self.residual(numer_coeff, denom_coeff)
 

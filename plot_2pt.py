@@ -143,7 +143,11 @@ gold_N = gold_par["Nx"]
 gold_T = gold_par["t_max"]
 
 gold_freq = 2 * np.pi * np.fft.fftfreq(gold_N, d=gold_h)
-nyquist = gold_freq.max() / 2
+nyq_f = gold_freq.max() / 2
+nyq_h = (1 + gold_h * gold_N * nyq_f) / gold_N  # kλ = T == L or 2π, so k = Tf?
+nyq_N = 200 / nyq_h
+
+print("Nyquist:", nyq_f, nyq_N, nyq_h)
 
 if gold_N % 2 != 0:
     raise ValueError("Reference mesh size is not even!")
@@ -170,7 +174,9 @@ plt.plot(N, log_hn(N, -1, np.log(4e3)), color="silver",
 plt.plot(N, log_hn(N, -2, np.log(6e3)), color="silver",
          label=r"$\mathcal{O}(h^2)$", zorder=0, linestyle="solid")
 plt.plot(N, log_hn(N, -3, np.log(8e3)), color="silver",
-         label=r"$\mathcal{O}(h^3)$", zorder=0, linestyle="dashdot")
+         label=r"$\mathcal{O}(h^3)$", zorder=0, linestyle="dashed")
+plt.plot(N, log_hn(N, -4, np.log(1e4)), color="silver",
+         label=r"$\mathcal{O}(h^4)$", zorder=0, linestyle="dashdot")
 
 
 # === Interpolate! ===

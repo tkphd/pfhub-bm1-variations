@@ -31,7 +31,7 @@ startTime = time.time()
 
 # System parameters & kinetic coefficients
 
-t_final = 1_000_000
+t_final = 10_000  # 1_000_000
 L = 200.
 π = np.pi
 
@@ -40,7 +40,7 @@ L = 200.
 parser = ArgumentParser()
 
 parser.add_argument("variant", help="variant type",
-                    choices=["noise", "original", "periodic", "tophat", "window", "winner"])
+                    choices=["noise", "original", "periodic", "window"])
 parser.add_argument("-x", "--dx", type=float,
                     help="mesh resolution: gold standard Δx=0.0625")
 parser.add_argument("-t", "--dt", type=float,
@@ -64,7 +64,7 @@ def stopwatch(clock):
 
 def start_report():
     e_file = f"{iodir}/ene.csv"
-    header = "runtime,time,free_energy"
+    header = "runtime,time,free_energy,sweeps,residual"
     with open(e_file, "w") as fh:
         fh.write(f"{header}\n")
 
@@ -130,13 +130,8 @@ elif args.variant == "original":
     ic = lambda x, y: ζ + ϵ * ripples(x, y, A0, B0)
 elif args.variant == "periodic":
     ic = lambda x, y: ζ + ϵ * ripples(x, y, Ap, Bp)
-elif args.variant == "tophat":
-    ic = lambda x, y: ζ + ϵ * tophat(x) * tophat(y) * ripples(x, y, A0, B0)
 elif args.variant == "window":
     ic = lambda x, y: ζ + ϵ * hann(x) * hann(y) * ripples(x, y, A0, B0)
-elif args.variant == "winner":
-    ic = lambda x, y: ζ + ϵ * (hann(x) * hann(y) * ripples(x, y, A0, B0)
-                             + hanc(x) * hanc(y) * ripples(x, y, Ap, Bp))
 else:
     raise ValueError("Unknown variant {args.variant}")
 
@@ -181,7 +176,7 @@ if resuming:
     energies = []
 else:
     residual = 1e-5
-    energies = [[time.time() - startTime, t, evolve_ch.free_energy()]]
+    energies = [[time.time() - startTime, t, evolve_ch.free_energy(), 0, residual]]
 
     write_and_report(t, evolve_ch, energies)
 
@@ -203,10 +198,15 @@ for check in CheckpointStepper(start=t,
 
     for step in stepper:
         dt = step.size
-        evolve_ch.solve(dt)
+        residual, swp = evolve_ch.solve(dt)
         t += dt
-        energies.append([stopwatch(startTime), t, evolve_ch.free_energy()])
 
+        # record free energy every 10 min of wall time
+        if not np.isclose(step.want, step.size) or stopwatch(checkTime) > 600:
+            energies.append([stopwatch(startTime), t, evolve_ch.free_energy(), swp, residual])
+            checkTime = time.time()
+
+        # save progress at least once per day
         if stopwatch(checkTime) > 86400:
             write_checkpoint(t, evolve_ch, energies, chkpt)
             checkTime = time.time()
