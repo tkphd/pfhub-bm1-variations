@@ -30,7 +30,7 @@ class MidpointNormalize(matplotlib.colors.Normalize):
 
 def finterf(c_hat, Ksq):
     # interfacial free energy density
-    return κ * np.fft.ifftn(Ksq * c_hat**2).real
+    return κ * np.fft.irfftn(Ksq * c_hat**2).real
 
 
 def fbulk(c):
@@ -48,11 +48,11 @@ def dfdc_nonlinear(c):
 
 
 def c_x(c_hat, K):
-    return np.fft.ifftn(c_hat * 1j * K[0]).real
+    return np.fft.irfftn(c_hat * 1j * K[0]).real
 
 
 def c_y(c_hat, K):
-    return np.fft.ifftn(c_hat * 1j * K[1]).real
+    return np.fft.irfftn(c_hat * 1j * K[1]).real
 
 
 def free_energy(c, c_hat, K, dx):
@@ -68,8 +68,8 @@ def free_energy(c, c_hat, K, dx):
 def autocorrelation(data):
     """Compute the auto-correlation / 2-point statistics of a field variable"""
     signal = data - np.mean(data)
-    fft = np.fft.fftn(signal)
-    inv = np.fft.fftshift(np.fft.ifftn(fft * np.conjugate(fft)))
+    fft = np.fft.rfftn(signal)
+    inv = np.fft.fftshift(np.fft.irfftn(fft * np.conjugate(fft)))
     # cor = np.fft.ifftshift(inv).real / (np.var(signal) * signal.size)
     cor = inv.real / (np.var(signal) * signal.size)
     return cor
@@ -100,7 +100,7 @@ class Evolver:
         self.c_old = c_old.copy()
         self.c_sweep = np.ones_like(self.c)
 
-        self.c_hat = np.fft.fftn(self.c)
+        self.c_hat = np.fft.rfftn(self.c)
         self.c_hat_prev = np.ones_like(self.c_hat)
         self.c_hat_old = self.c_hat.copy()
 
@@ -108,7 +108,8 @@ class Evolver:
 
         # prepare auxiliary arrays
         k = 2 * π * np.fft.fftfreq(self.c.shape[0], d=self.dx)
-        self.K = np.array(np.meshgrid(k, k, indexing="ij"), dtype=np.float64)
+        ky= 2 * π * np.fft.rfftfreq(self.c.shape[1], d=self.dx)
+        self.K = np.array(np.meshgrid(k, ky, indexing="ij"), dtype=np.float64)
         self.Ksq = np.sum(self.K * self.K, axis=0, dtype=np.float64)
 
         # coefficient of terms linear in c_hat
@@ -134,12 +135,12 @@ class Evolver:
     def sweep(self, numer_coeff, denom_coeff):
         self.c_hat_prev[:] = self.c_hat
 
-        # self.dfdc_hat[:] = self.alias_mask * np.fft.fftn(dfdc_nonlinear(self.c_sweep))
-        self.dfdc_hat[:] = np.fft.fftn(dfdc_nonlinear(self.c_sweep))
+        # self.dfdc_hat[:] = self.alias_mask * np.fft.rfftn(dfdc_nonlinear(self.c_sweep))
+        self.dfdc_hat[:] = np.fft.rfftn(dfdc_nonlinear(self.c_sweep))
 
         self.c_hat[:] = (self.c_hat_old - numer_coeff * self.dfdc_hat) / denom_coeff
 
-        self.c[:] = np.fft.ifftn(self.c_hat).real
+        self.c[:] = np.fft.irfftn(self.c_hat).real
 
         return self.residual(numer_coeff, denom_coeff)
 
@@ -207,10 +208,10 @@ class FourierInterpolant:
         """
         Interpolate the coarse field data $v$ onto the fine mesh
         """
-        v_hat = np.fft.fftshift(np.fft.fftn(v))
+        v_hat = np.fft.fftshift(np.fft.rfftn(v))
         u_hat = self.pad(v_hat)
         scale = np.prod(np.array(u_hat.shape)) / np.prod(np.array(v.shape))
-        return scale * np.fft.ifftn(np.fft.ifftshift(u_hat)).real
+        return scale * np.fft.irfftn(np.fft.ifftshift(u_hat)).real
 
 
 def log_hn(h, n, b=np.log(1000)):

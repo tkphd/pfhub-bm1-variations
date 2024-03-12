@@ -45,9 +45,9 @@ parse_npz = compile("{prefix}/c_{t:8d}.npz")
 def correlate(data):
     """Compute the auto-correlation / 2-point statistics of a field variable"""
     signal = data - data.mean()
-    fft = np.fft.fftn(signal)
+    fft = np.fft.rfftn(signal)
     psd = fft * np.conjugate(fft)
-    return np.fft.ifftn(psd).real / (np.var(signal) * signal.size)
+    return np.fft.irfftn(psd).real / (np.var(signal) * signal.size)
 
 
 def elapsed(stopwatch):
@@ -88,9 +88,9 @@ def upsampled(c_npz, k_npz, mesh_h=0.0125, interpolant=None):
 
             hi_res = interpolant.upsample(lo_res)
             signal = hi_res - hi_res.mean()
-            hi_fft = np.fft.fftn(signal)
+            hi_fft = np.fft.rfftn(signal)
             hi_psd = hi_fft * np.conjugate(hi_fft)
-            hi_cor = np.fft.ifftn(hi_psd).real / (np.var(signal) * signal.size)
+            hi_cor = np.fft.irfftn(hi_psd).real / (np.var(signal) * signal.size)
             cor_r, cor_μ = radial_profile(hi_cor)
             cor_r = gold_h * np.array(cor_r)
 
@@ -142,7 +142,7 @@ gold_h = gold_par["dx"]
 gold_N = gold_par["Nx"]
 gold_T = gold_par["t_max"]
 
-gold_freq = 2 * np.pi * np.fft.fftfreq(gold_N, d=gold_h)
+gold_freq = 2 * np.pi * np.fft.rfftfreq(gold_N, d=gold_h)
 nyq_f = gold_freq.max() / 2
 nyq_h = (1 + gold_h * gold_N * nyq_f) / gold_N  # kλ = T == L or 2π, so k = Tf?
 nyq_N = 200 / nyq_h

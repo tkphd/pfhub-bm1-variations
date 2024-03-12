@@ -206,11 +206,11 @@ for check in CheckpointStepper(start=t,
             energies.append([stopwatch(startTime), t, evolve_ch.free_energy(), swp, residual])
             checkTime = time.time()
 
-        # save progress at least once per day
-        if stopwatch(checkTime) > 86400:
-            write_checkpoint(t, evolve_ch, energies, chkpt)
-            checkTime = time.time()
-            energies = []
+        # # save progress at least once per day
+        # if stopwatch(checkTime) > 86400:
+        #     write_checkpoint(t, evolve_ch, energies, chkpt)
+        #     checkTime = time.time()
+        #     energies = []
 
         _ = step.succeeded()
 
