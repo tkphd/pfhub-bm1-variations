@@ -12,9 +12,10 @@ L = 200
 κ = 2.0  # gradient energy coeff
 M = 5.0  # diffusivity
 
+
 class MidpointNormalize(matplotlib.colors.Normalize):
     """
-    Helper class to center the colormap on a specific value from Joe Kington via
+    Helper class to center the colormap on a specific value from Joe Kington
     <http://chris35wills.github.io/matplotlib_diverging_colorbar/>
     """
 
@@ -75,6 +76,10 @@ def autocorrelation(data):
     return cor
 
 
+def radial_average(data, r, R):
+    return data[(R > r - 0.5) & (R < r + 0.5)].mean()
+
+
 def radial_profile(data, center=None):
     """Take the average in concentric rings around the center of a field"""
     if center is None:
@@ -83,11 +88,8 @@ def radial_profile(data, center=None):
     nx, ny = data.shape
     x, y = np.meshgrid(np.arange(nx), np.arange(ny), indexing="ij")
     R = np.sqrt((x - center[0])**2 + (y - center[1])**2)
-
-    radial_average = lambda r : data[(R > r - 0.5) & (R < r + 0.5)].mean()
-
     r = np.arange(center[0]+1)
-    μ = np.vectorize(radial_average)(r)
+    μ = np.vectorize(radial_average)(data, r, R)
 
     return r, μ
 
@@ -107,14 +109,14 @@ class Evolver:
         self.dfdc_hat = np.ones_like(self.c_hat)
 
         # prepare auxiliary arrays
-        k = 2 * π * np.fft.fftfreq(self.c.shape[0], d=self.dx)
-        ky= 2 * π * np.fft.rfftfreq(self.c.shape[1], d=self.dx)
-        self.K = np.array(np.meshgrid(k, ky, indexing="ij"), dtype=np.float64)
+        kx = 2 * π * np.fft.fftfreq(self.c.shape[0], d=self.dx)
+        ky = 2 * π * np.fft.rfftfreq(self.c.shape[1], d=self.dx)
+        self.K = np.array(np.meshgrid(kx, ky, indexing="ij"), dtype=np.float64)
         self.Ksq = np.sum(self.K * self.K, axis=0, dtype=np.float64)
 
         # coefficient of terms linear in c_hat
-        self.linear_coefficient = 2 * ρ * (α**2 + 4 * α * β + β**2) \
-                                + κ * self.Ksq
+        self.linear_coefficient = \
+            2 * ρ * (α**2 + 4 * α * β + β**2) + κ * self.Ksq
 
         # # dealias the flux capacitor
         # self.nyquist_mode = k.max() / 2
@@ -122,15 +124,13 @@ class Evolver:
         #                           * (np.abs(self.K[1]) < self.nyquist_mode),
         #                             dtype=bool)
 
-
     def free_energy(self):
         return free_energy(self.c, self.c_hat, self.K, self.dx)
 
-
     def residual(self, numer_coeff, denom_coeff):
-        return np.linalg.norm(np.abs(self.c_hat_old - numer_coeff * self.dfdc_hat
-                              - denom_coeff * self.c_hat_prev).real)
-
+        return np.linalg.norm(
+            np.abs(self.c_hat_old - numer_coeff * self.dfdc_hat
+                   - denom_coeff * self.c_hat_prev).real)
 
     def sweep(self, numer_coeff, denom_coeff):
         self.c_hat_prev[:] = self.c_hat
@@ -138,12 +138,12 @@ class Evolver:
         # self.dfdc_hat[:] = self.alias_mask * np.fft.rfftn(dfdc_nonlinear(self.c_sweep))
         self.dfdc_hat[:] = np.fft.rfftn(dfdc_nonlinear(self.c_sweep))
 
-        self.c_hat[:] = (self.c_hat_old - numer_coeff * self.dfdc_hat) / denom_coeff
+        self.c_hat[:] = \
+            (self.c_hat_old - numer_coeff * self.dfdc_hat) / denom_coeff
 
         self.c[:] = np.fft.irfftn(self.c_hat).real
 
         return self.residual(numer_coeff, denom_coeff)
-
 
     def solve(self, dt, sweeps=1000):
         # semi-implicit discretization of the PFHub equation of motion
@@ -158,7 +158,7 @@ class Evolver:
         self.c_old[:] = self.c
 
         numer_coeff = dt * M * self.Ksq  # used in the numerator
-        denom_coeff = 1 + dt * M * self.Ksq * self.linear_coefficient # denominator
+        denom_coeff = 1 + dt * M * self.Ksq * self.linear_coefficient
 
         # iteratively update c in place
         while sweep < sweeps and residual > 1e-3:
@@ -187,7 +187,6 @@ class FourierInterpolant:
         self.shape = shape
         self.fine = None
 
-
     def pad(self, v_hat):
         """
         Zero-pad "before and after" coarse data to fit fine mesh size
@@ -202,7 +201,6 @@ class FourierInterpolant:
         z = np.subtract(M, N, dtype=int) // 2  # ≡ (M - N) // 2
         z = z.reshape((len(N), 1))
         return np.pad(v_hat, z)
-
 
     def upsample(self, v):
         """
@@ -246,8 +244,9 @@ def progression(start=0):
         When progression() is called, it will increment value,
         so we have to under-shoot
         """
-        delta = 10**np.floor(np.log10(start)).astype(int)
         value = 10**np.ceil(np.log10(start)).astype(int)
+        delta = 10**np.floor(np.log10(start)).astype(int) if value < 10_000 else 1000
+
         while value > start:
             value -= delta
         print(f"Δ = {delta}, t = {value}")
@@ -255,5 +254,7 @@ def progression(start=0):
     while True:
         value += delta
         yield value
-        if (value == 10 * delta):
+        if (value < 10_000) and (value == 10 * delta):
             delta = value
+        elif (value == 100_000):
+            delta *= 10

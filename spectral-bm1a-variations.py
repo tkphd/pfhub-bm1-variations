@@ -14,6 +14,10 @@ import glob
 import numpy as np
 import os
 import pandas as pd
+try:
+    from rich import print
+except ImportError:
+    pass
 from steppyngstounes import CheckpointStepper, FixedStepper
 import sys
 import time
@@ -23,17 +27,19 @@ if not cluster_job:
     from tqdm import tqdm
 
 sys.path.append(os.path.dirname(__file__))
-
-from spectral import Evolver, progression
+from spectral import Evolver, M, κ, progression
 
 # Start the clock
 startTime = time.time()
 
 # System parameters & kinetic coefficients
 
-t_final = 10_000  # 1_000_000
+t_final = 1  # 10_000  # 1_000_000
 L = 200.
 π = np.pi
+
+h0 = 0.0625
+k0 = 0.00006103515625
 
 # Read command-line flags
 
@@ -41,16 +47,20 @@ parser = ArgumentParser()
 
 parser.add_argument("variant", help="variant type",
                     choices=["noise", "original", "periodic", "window"])
-parser.add_argument("-x", "--dx", type=float,
-                    help="mesh resolution: gold standard Δx=0.0625")
-parser.add_argument("-t", "--dt", type=float,
-                    help="time resolution: gold standard Δt=0.1250")
+parser.add_argument("-x", "--dx",
+                    type=float,
+                    default=h0,
+                    help=f"mesh resolution: gold standard Δx={h0}")
+parser.add_argument("-t", "--dt",
+                    type=float,
+                    default=k0,
+                    help=f"time resolution: gold standard Δt={k0}")
 
 args = parser.parse_args()
 dx = args.dx
 dt = args.dt
 
-iodir = f"{args.variant}/dt{dt:6.04f}_dx{dx:08.04f}"
+iodir = f"{args.variant}/dt{dt:8.06f}_dx{dx:08.04f}"
 chkpt = f"{iodir}/checkpoint.npz"
 
 if not os.path.exists(iodir):
@@ -64,9 +74,21 @@ def stopwatch(clock):
 
 def start_report():
     e_file = f"{iodir}/ene.csv"
-    header = "runtime,time,free_energy,sweeps,residual"
+    e_head = "runtime,time,free_energy"
     with open(e_file, "w") as fh:
-        fh.write(f"{header}\n")
+        fh.write(f"{e_head}\n")
+
+    r_file = f"{iodir}/res.csv"
+    r_head = "time,sweeps,residual\n"
+    with open(r_file, "w") as fh:
+        fh.write(f"{r_head}\n")
+
+
+def report(fname, lines):
+    if lines is not None and len(lines) != 0:
+        with open(fname, "a") as fh:
+            writer = csv.writer(fh)
+            writer.writerows(lines)
 
 
 def write_checkpoint(t, evolver, energies, fname):
@@ -75,10 +97,7 @@ def write_checkpoint(t, evolver, energies, fname):
                         c=evolver.c,
                         c_old=evolver.c_old)
 
-    if energies is not None:
-        with open(f"{iodir}/ene.csv", "a") as fh:
-            writer = csv.writer(fh)
-            writer.writerows(energies)
+    report(f"{iodir}/ene.csv", energies)
 
 
 def write_and_report(t, evolver, energies):
@@ -171,15 +190,12 @@ if t >= t_final or np.isclose(t, t_final):
 
 # === prepare to evolve ===
 
-if resuming:
-    residual = 1.0
-    energies = []
-else:
-    residual = 1e-5
-    energies = [[time.time() - startTime, t, evolve_ch.free_energy(), 0, residual]]
-
+if not resuming:
+    energies = [[time.time() - startTime, t, evolve_ch.free_energy()]]
     write_and_report(t, evolve_ch, energies)
 
+    cfl = κ * M * dt * dx**(-4)
+    print(f"Linear stability is {cfl:.2e}")
 
 checkTime = time.time()
 
@@ -187,6 +203,7 @@ for check in CheckpointStepper(start=t,
                                stops=progression(int(t)),
                                stop=t_final):
     energies = []
+    residues = []
     stepper = FixedStepper(start=check.begin, stop=check.end, size=dt)
 
     if not cluster_job:
@@ -198,25 +215,21 @@ for check in CheckpointStepper(start=t,
 
     for step in stepper:
         dt = step.size
-        residual, swp = evolve_ch.solve(dt)
+        residual, sweeps = evolve_ch.solve(dt)
         t += dt
 
-        # record free energy every 10 min of wall time
-        if not np.isclose(step.want, step.size) or stopwatch(checkTime) > 600:
-            energies.append([stopwatch(startTime), t, evolve_ch.free_energy(), swp, residual])
-            checkTime = time.time()
+        residues.append([t, sweeps, residual])
 
-        # # save progress at least once per day
-        # if stopwatch(checkTime) > 86400:
-        #     write_checkpoint(t, evolve_ch, energies, chkpt)
-        #     checkTime = time.time()
-        #     energies = []
+        if not np.isclose(dt, step.want) or stopwatch(checkTime) > 600:  # last step or every 10 minutes
+            energies.append([stopwatch(startTime), t, evolve_ch.free_energy()])
+            checkTime = time.time()
 
         _ = step.succeeded()
 
     dt = step.want
 
     write_and_report(t, evolve_ch, energies)
+    report(f"{iodir}/res.csv", residues)
 
     if not np.all(np.isfinite(evolve_ch.c)):
         raise ValueError("Result is not Real!")
