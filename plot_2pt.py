@@ -33,14 +33,11 @@ sys.path.append(os.path.dirname(__file__))
 
 from spectral import FourierInterpolant, log_hn, radial_profile
 
-# my goofy folder naming conventions
-old_pattern = "dt?.????_dx???.????"
-new_pattern = "dx???.????"
-
-parse_dt  = compile("dt{dt:6f}{suffix}")
+parse_dt  = compile("dt{dt:8.6f}{suffix}")
 parse_dx  = compile("{prefix}x{dx:8f}")
-parse_dtx = compile("dt{dt:6f}_dx{dx:8f}")
+parse_dtx = compile("dt{dt:8.6f}_dx{dx:8f}")
 parse_npz = compile("{prefix}/c_{t:8d}.npz")
+
 
 def correlate(data):
     """Compute the auto-correlation / 2-point statistics of a field variable"""
@@ -72,10 +69,11 @@ def sim_details(iodir):
     }
 
 
-def upsampled(c_npz, k_npz, mesh_h=0.0125, interpolant=None):
+def upsampled(c_npz, k_npz, mesh_h=0.0625, interpolant=None):
     hi_res = None
+    hi_cor = None
     hi_fft = None
-    mesh_N = int(3200 * mesh_h / 0.0625)
+    mesh_N = 200 // mesh_h  # int(3200 * mesh_h / 0.0625)
 
     if interpolant is None:
         interpolant = FourierInterpolant((mesh_N, mesh_N))
@@ -88,9 +86,9 @@ def upsampled(c_npz, k_npz, mesh_h=0.0125, interpolant=None):
 
             hi_res = interpolant.upsample(lo_res)
             signal = hi_res - hi_res.mean()
-            hi_fft = np.fft.rfftn(signal)
+            hi_fft = np.fft.fftn(signal)
             hi_psd = hi_fft * np.conjugate(hi_fft)
-            hi_cor = np.fft.irfftn(hi_psd).real / (np.var(signal) * signal.size)
+            hi_cor = np.fft.ifftn(hi_psd).real / (np.var(signal) * signal.size)
             cor_r, cor_μ = radial_profile(hi_cor)
             cor_r = gold_h * np.array(cor_r)
 
@@ -132,7 +130,7 @@ parser.add_argument("--dt", type=float,
                             help="Timestep of interest")
 args = parser.parse_args()
 
-dirs = sorted(glob.glob(old_pattern) + glob.glob(new_pattern))
+dirs = sorted(glob.glob("dt?.??????_dx???.????"))
 
 # get "gold standard" info
 goldir = dirs[0]
@@ -142,20 +140,17 @@ gold_h = gold_par["dx"]
 gold_N = gold_par["Nx"]
 gold_T = gold_par["t_max"]
 
-gold_freq = 2 * np.pi * np.fft.rfftfreq(gold_N, d=gold_h)
-nyq_f = gold_freq.max() / 2
-nyq_h = (1 + gold_h * gold_N * nyq_f) / gold_N  # kλ = T == L or 2π, so k = Tf?
-nyq_N = 200 / nyq_h
-
-print("Nyquist:", nyq_f, nyq_N, nyq_h)
-
 if gold_N % 2 != 0:
     raise ValueError("Reference mesh size is not even!")
+
+mesh_h = 2**-4  # min(2**(-4), gold_h)  # 0.00625 == 2**-4
+mesh_N = gold_N  # int(gold_N * gold_h / mesh_h)
+sinterp = FourierInterpolant((mesh_N, mesh_N))
 
 print(f"=== {variant}/{goldir} has reached t={gold_T:,d} ===\n")
 
 # set output image file
-png = f"auto_{variant}_dt{args.dt:6.04f}.png"
+png = f"auto_{variant}_dt{args.dt:8.06f}.png"
 
 plt.figure(1, figsize=(10, 8))
 plt.title(f"\"{variant.capitalize()}\" IC: Auto-Correlation")
@@ -181,10 +176,6 @@ plt.plot(N, log_hn(N, -4, np.log(1e4)), color="silver",
 
 # === Interpolate! ===
 
-mesh_h = min(2**(-5), gold_h)
-mesh_N = int(gold_N * gold_h / mesh_h)
-sinterp = FourierInterpolant((mesh_N, mesh_N))
-
 if not os.path.exists(f"{goldir}/interp"):
     os.mkdir(f"{goldir}/interp")
 
@@ -195,9 +186,9 @@ for job in dirs:
     if stats["dx"] > gold_h:
         jobs[job] = stats
 
-# gold_npzs = sorted(glob.glob(f"{goldir}/c_????????.npz"))
+gold_npzs = sorted(glob.glob(f"{goldir}/c_????????.npz"))
 
-gold_npzs = [f"{goldir}/c_{x:08d}.npz" for x in range(11)]
+# gold_npzs = [f"{goldir}/c_{x:08d}.npz" for x in range(11)]
 
 for golden in gold_npzs:
     t = parse_npz.parse(golden)["t"]
