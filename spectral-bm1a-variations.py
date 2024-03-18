@@ -11,7 +11,7 @@
 from argparse import ArgumentParser
 import csv
 import glob
-from line_profiler import profile
+# from line_profiler import profile
 import numpy as np
 import os
 import pandas as pd
@@ -97,7 +97,7 @@ def start_report():
         fh.write(f"{r_head}\n")
 
 
-@profile
+# @profile
 def report(fname, lines):
     if lines is not None and len(lines) != 0:
         with open(fname, "a") as fh:
@@ -105,7 +105,7 @@ def report(fname, lines):
             writer.writerows(lines)
 
 
-@profile
+# @profile
 def write_checkpoint(t, evolver, energies, fname):
     np.savez_compressed(fname,
                         t=t,
@@ -115,7 +115,7 @@ def write_checkpoint(t, evolver, energies, fname):
     report(f"{iodir}/ene.csv", energies)
 
 
-@profile
+# @profile
 def write_and_report(t, evolver, energies):
     write_checkpoint(t, evolver, energies, f"{iodir}/c_{t:08.0f}.npz")
 
@@ -127,7 +127,6 @@ def write_and_report(t, evolver, energies):
 
 ζ = 0.5    # mean composition
 ϵ = 0.01   # noise amplitude
-λ = L / 40 # width of periodic boundary shell
 
 N = np.rint(L / dx).astype(int)
 if N % 2 != 0:
@@ -137,24 +136,19 @@ x = np.linspace(0., L - dx, N)
 X, Y = np.meshgrid(x, x, indexing="xy")
 
 # not-random microstructure
-@profile
+# @profile
 def ripples(x, y, A, B):
     return np.cos(A[0] * x) * np.cos(B[0] * y) \
          +(np.cos(A[1] * x) * np.cos(B[1] * y)) ** 2 \
          + np.cos(A[2] * x - B[2] * y) \
          * np.cos(A[3] * x - B[3] * y)
 
-# window functions
-@profile
-def tophat(x):
-    return 0.25 * (1 + np.tanh(π * (x - λ) / λ))   \
-                * (1 + np.tanh(π * (L - x - λ) / λ))
-
-@profile
+# window function
+# @profile
 def hann(x):
     return np.sin(π * x / L)**2  # Hann window
 
-@profile
+# @profile
 def ic(x, y):
     # published cosine coefficients
     A0 = np.array([0.105, 0.130, 0.025, 0.070])
@@ -181,7 +175,7 @@ def ic(x, y):
 
     return ζ + coeff * values
 
-@profile
+# @profile
 def main():
     global dt, startTime
 
