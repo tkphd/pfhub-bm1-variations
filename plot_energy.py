@@ -19,8 +19,8 @@ plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.rainbow(np.linspace
 
 # my goofy folder naming conventions
 old_pattern = "dt?.????_dx???.????"
-new_pattern = "dx???.????"
-parse_old = compile("dt{dt:6f}_dx{dx:8f}")
+new_pattern = "dt?.??????_dx???.????"
+parse_old = compile("dt{dt:8f}_dx{dx:8f}")
 parse_new = compile("dx{dx:8f}")
 parse_npz = compile("{}/c_{}.npz")
 
@@ -35,8 +35,8 @@ for iodir in dirs:
     if deets is not None:
         dt = deets["dt"]
     else:
-        dt = "0.0000"
-    dt = str(dt)
+        dt = "0.000000"
+    dt = f"{dt:8.06f}"
     if dt in jobs.keys():
         jobs[dt].append(iodir)
     else:
@@ -74,8 +74,8 @@ for dt, dirs in jobs.items():
     print("")
 
     for zord, iodir in enumerate(dirs):
-        ene = f"{iodir}/ene.csv"
         priority = 10 - 9 * zord / len(dirs)
+        ene = f"{iodir}/ene.csv"
         deets = parse_old.parse(iodir)
         if deets is None:
             deets = parse_new.parse(iodir)
@@ -84,21 +84,25 @@ for dt, dirs in jobs.items():
 
         label = f"$\\Delta x = {dx}$"
 
-        df = pd.read_csv(ene)
+        try:
+            df = pd.read_csv(ene)
 
-        plt.figure(1)
-        plt.plot(df["time"], df["free_energy"], label=label, zorder=priority)
+            plt.figure(1)
+            plt.plot(df["time"], df["free_energy"], label=label, zorder=priority)
 
-        # indicate current time of the gold standard
-        if np.isclose(float(dx), 0.0625):
-            plt.plot(
-                (df["time"].iloc[-1], df["time"].iloc[-1]),
-                (df["free_energy"].iloc[-1], y_lim[0]),
-                color="silver", linestyle="dotted", zorder=priority
-            )
+            # indicate current time of the gold standard
+            if np.isclose(float(dx), 0.0625):
+                plt.plot(
+                    (df["time"].iloc[-1], df["time"].iloc[-1]),
+                    (df["free_energy"].iloc[-1], y_lim[0]),
+                    color="silver", linestyle="dotted", zorder=priority
+                )
 
-        plt.figure(2)
-        plt.plot(df["time"][1:], np.diff(df["time"]), label=label, zorder=priority)
+            plt.figure(2)
+            plt.plot(df["time"][1:], np.diff(df["time"]), label=label, zorder=priority)
+        except FileNotFoundError:
+            df = None
+            pass
 
         pbar = tqdm(sorted(glob.glob(f"{iodir}/c_*.npz")))
         for npz in pbar:

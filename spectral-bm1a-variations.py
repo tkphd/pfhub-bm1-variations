@@ -10,6 +10,7 @@
 
 from argparse import ArgumentParser
 import csv
+import gzip
 import glob
 # from line_profiler import profile
 import numpy as np
@@ -76,9 +77,12 @@ else:
 iodir = f"{args.variant}/dt{dt:8.06f}_dx{dx:08.04f}"
 chkpt = f"{iodir}/checkpoint.npz"
 
+ene_file = f"{iodir}/ene.csv.gz"
+res_file = f"{iodir}/res.csv.gz"
+
 if not os.path.exists(iodir):
-    print("Saving output to", iodir)
     os.mkdir(iodir)
+print("Saving output to", iodir)
 
 
 def stopwatch(clock):
@@ -86,26 +90,22 @@ def stopwatch(clock):
 
 
 def start_report():
-    e_file = f"{iodir}/ene.csv"
     e_head = "runtime,time,free_energy"
-    with open(e_file, "w") as fh:
+    with gzip.open(ene_file, "wt") as fh:
         fh.write(f"{e_head}\n")
 
-    r_file = f"{iodir}/res.csv"
     r_head = "time,sweeps,residual"
-    with open(r_file, "w") as fh:
+    with gzip.open(res_file, "wt") as fh:
         fh.write(f"{r_head}\n")
 
 
-# @profile
 def report(fname, lines):
     if lines is not None and len(lines) != 0:
-        with open(fname, "a") as fh:
+        with gzip.open(fname, "at") as fh:
             writer = csv.writer(fh)
             writer.writerows(lines)
 
 
-# @profile
 def write_checkpoint(t, evolver, energies, fname):
     np.savez_compressed(fname,
                         t=t,
@@ -115,7 +115,6 @@ def write_checkpoint(t, evolver, energies, fname):
     report(f"{iodir}/ene.csv", energies)
 
 
-# @profile
 def write_and_report(t, evolver, energies):
     write_checkpoint(t, evolver, energies, f"{iodir}/c_{t:08.0f}.npz")
 
@@ -136,7 +135,6 @@ x = np.linspace(0., L - dx, N)
 X, Y = np.meshgrid(x, x, indexing="xy")
 
 # not-random microstructure
-# @profile
 def ripples(x, y, A, B):
     return np.cos(A[0] * x) * np.cos(B[0] * y) \
          +(np.cos(A[1] * x) * np.cos(B[1] * y)) ** 2 \
@@ -144,11 +142,9 @@ def ripples(x, y, A, B):
          * np.cos(A[3] * x - B[3] * y)
 
 # window function
-# @profile
 def hann(x):
     return np.sin(π * x / L)**2  # Hann window
 
-# @profile
 def ic(x, y):
     # published cosine coefficients
     A0 = np.array([0.105, 0.130, 0.025, 0.070])
@@ -175,17 +171,17 @@ def ic(x, y):
 
     return ζ + coeff * values
 
-# @profile
+
 def main():
     global dt, startTime
 
     # === generate or load microstructure ===
 
     npz_files = sorted(glob.glob(f"{iodir}/c*.npz"))
-    resuming = (len(npz_files) != 0) and os.path.exists(f"{iodir}/ene.csv")
+    resuming = (len(npz_files) != 0) and os.path.exists(ene_file)
 
     if resuming:
-        ene_df = pd.read_csv(f"{iodir}/ene.csv")
+        ene_df = pd.read_csv(ene_file)
         print(ene_df.tail())
         t = float(ene_df.time.iloc[-1])
         startTime -= ene_df.runtime.iloc[-1]
@@ -216,7 +212,7 @@ def main():
         energies = [[time.time() - startTime, t, evolve_ch.free_energy()]]
         residues = [[t, 0, 1e-4]]
         write_and_report(t, evolve_ch, energies)
-        report(f"{iodir}/res.csv", residues)
+        report(res_file, residues)
 
     checkTime = time.time()
 
@@ -243,8 +239,8 @@ def main():
 
             if not np.isclose(dt, step.want) or stopwatch(checkTime) > 600:  # last step or every 10 minutes
                 energies.append([stopwatch(startTime), t, evolve_ch.free_energy()])
-                report(f"{iodir}/ene.csv", energies)
-                report(f"{iodir}/res.csv", residues)
+                report(ene_file, energies)
+                report(res_file, residues)
                 energies = []
                 residues = []
                 checkTime = time.time()
@@ -254,7 +250,7 @@ def main():
         dt = step.want
 
         write_and_report(t, evolve_ch, energies)
-        report(f"{iodir}/res.csv", residues)
+        report(res_file, residues)
 
         if not np.all(np.isfinite(evolve_ch.c)):
             raise ValueError("Result is not Real!")

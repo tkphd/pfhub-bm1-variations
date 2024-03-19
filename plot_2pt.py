@@ -33,9 +33,9 @@ sys.path.append(os.path.dirname(__file__))
 
 from spectral import FourierInterpolant, log_hn, radial_profile
 
-parse_dt  = compile("dt{dt:8.6f}{suffix}")
+parse_dt  = compile("dt{dt:8f}{suffix}")
 parse_dx  = compile("{prefix}x{dx:8f}")
-parse_dtx = compile("dt{dt:8.6f}_dx{dx:8f}")
+parse_dtx = compile("dt{dt:8f}_dx{dx:8f}")
 parse_npz = compile("{prefix}/c_{t:8d}.npz")
 
 
@@ -60,7 +60,7 @@ def sim_details(iodir):
 
     slices = sorted(glob.glob(f"{iodir}/c_*.npz"))
 
-    t_max = parse_npz.parse(slices[-1])["t"]
+    t_max = parse_npz.parse(slices[-1])["t"] if len(slices) > 1 else 0
 
     return {
         "dx": float(dx),
@@ -69,10 +69,12 @@ def sim_details(iodir):
     }
 
 
-def upsampled(c_npz, k_npz, mesh_h=0.0625, interpolant=None):
+def upsampled(c_npz, k_npz, job_h, mesh_h=0.0625, interpolant=None):
     hi_res = None
     hi_cor = None
     hi_fft = None
+    cor_r  = None
+    cor_μ  = None
     mesh_N = 200 // mesh_h  # int(3200 * mesh_h / 0.0625)
 
     if interpolant is None:
@@ -112,6 +114,43 @@ def upsampled(c_npz, k_npz, mesh_h=0.0625, interpolant=None):
         except FileNotFoundError or zipfile.BadZipFile:
             print("failed (bad stored data).")
             pass
+
+    hi_png = k_npz.replace("npz", "png")
+
+    if not os.path.exists(hi_png):
+        fig, axs = plt.subplots(1, 2, figsize=(10, 4),
+                                constrained_layout=True, sharex=False, sharey=False)
+        fig.suptitle(
+            f"\"{variant.capitalize()}\" IC: $\\Delta x={job_h}\\ @\\ t={t:,d}$")
+
+        axs[0].set_xlabel("$n_x$ / [a.u.]")
+        axs[0].set_ylabel("$n_y$ / [a.u.]")
+        axs[0].set_title("composition")
+
+        axs[1].set_xlabel("$x$ / [a.u.]")
+        axs[1].set_ylabel("$\\sigma$ / [a.u.]")
+        axs[1].set_title("power spectrum")
+
+        if cor_r is None or cor_μ is None:
+            try:
+                with np.load(k_npz) as npz:
+                    cor_r = npz["r"]
+                    cor_μ = npz["μ"]
+            except FileNotFoundError:
+                pass
+
+
+        if hi_res is not None:
+            fig.colorbar(
+                axs[0].imshow(hi_res, cmap="coolwarm", clim=(0.3, 0.7),
+                              interpolation=None, origin="lower")
+            )
+
+        if cor_r is not None:
+            axs[1].plot(cor_r, cor_μ)
+
+        fig.savefig(hi_png, dpi=400, bbox_inches="tight")
+        plt.close(fig)
 
     return hi_res, hi_cor
 
@@ -197,7 +236,7 @@ for golden in gold_npzs:
     resolutions = []
     norms = []
 
-    _, gold_cor = upsampled(golden, kolden, mesh_h, sinterp)
+    _, gold_cor = upsampled(golden, kolden, gold_h, mesh_h, sinterp)
 
     if gold_cor is not None:
         print(f"  Interpolating {variant.capitalize()}s @ t = {t:,d} / {gold_T:,d}")
@@ -211,11 +250,12 @@ for golden in gold_npzs:
                 os.mkdir(terpdir)
 
             job_N = job_par["Nx"]
+            job_h = job_par["dx"]
 
             job_c_npz = f"{jobdir}/c_{t:08d}.npz"
             job_k_npz = f"{jobdir}/interp/c_{t:08d}.npz"
 
-            _, job_cor = upsampled(job_c_npz, job_k_npz, mesh_h, sinterp)
+            _, job_cor = upsampled(job_c_npz, job_k_npz, job_h, mesh_h, sinterp)
 
             if gold_cor is not None and job_cor is not None:
                 ell_two = LA.norm(gold_cor - job_cor)
@@ -234,7 +274,9 @@ for golden in gold_npzs:
 
 if len(gold_npzs) < 50:
     plt.legend(ncol=3, loc=3, fontsize=9)
+
 plt.savefig(png, dpi=400, bbox_inches="tight")
+
 plt.savefig(f"../auto_{variant}.png", dpi=400, bbox_inches="tight")
 
 print(f"\n  Saved image to {png}\n")
