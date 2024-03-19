@@ -149,23 +149,22 @@ class Evolver:
     # @profile
     def sweep(self, numer_coeff, denom_coeff):
         # Always sweep the non-linear terms at least twice
-        for _ in range(2):
-            self.c_hat_prev[:] = self.c_hat
+        self.c_hat_prev[:] = self.c_hat
 
-            # self.dfdc_hat[:] = self.alias_mask * np.fft.rfftn(dfdc_nonlinear(self.c_sweep))
-            self.dfdc_hat[:] = np.fft.rfftn(dfdc_nonlinear(self.c_sweep))
+        # self.dfdc_hat[:] = self.alias_mask * np.fft.rfftn(dfdc_nonlinear(self.c_sweep))
+        self.dfdc_hat[:] = np.fft.rfftn(dfdc_nonlinear(self.c_sweep))
 
-            self.c_hat[:] = \
-                (self.c_hat_old - numer_coeff * self.dfdc_hat) / denom_coeff
+        self.c_hat[:] = \
+            (self.c_hat_old - numer_coeff * self.dfdc_hat) / denom_coeff
 
-            self.c[:] = np.fft.irfftn(self.c_hat).real
+        self.c[:] = np.fft.irfftn(self.c_hat).real
 
-            self.c_sweep[:] = self.c
+        self.c_sweep[:] = self.c
 
         return self.residual(numer_coeff, denom_coeff)
 
     # @profile
-    def solve(self, dt, maxsweeps=50, rtol=1e-4):
+    def solve(self, dt, maxsweeps=1000, rtol=7e-4):
         # semi-implicit discretization of the PFHub equation of motion
         residual = 1.0
         sweep = 0
@@ -181,9 +180,9 @@ class Evolver:
         denom_coeff = 1 + dt * M * self.Ksq * self.linear_coefficient
 
         # iteratively update c in place
-        while sweep < maxsweeps and residual > rtol:
+        while residual > rtol and sweep < maxsweeps:
             residual = self.sweep(numer_coeff, denom_coeff)
-            sweep += 2
+            sweep += 1
 
         if sweep >= maxsweeps:
             raise ValueError(f"Exceeded {maxsweeps} sweeps with res = {residual}")
