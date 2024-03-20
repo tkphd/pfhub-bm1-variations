@@ -2,7 +2,6 @@
 
 import numpy as np
 import matplotlib
-# from line_profiler import profile
 
 π = np.pi
 L = 200
@@ -29,40 +28,33 @@ class MidpointNormalize(matplotlib.colors.Normalize):
         x, y = [self.vmin, self.midpoint, self.vmax], [0, 0.5, 1]
         return np.ma.masked_array(np.interp(value, x, y), np.isnan(value))
 
-# @profile
 def finterf(c_hat, Ksq):
     # interfacial free energy density
     return κ * np.fft.irfftn(Ksq * c_hat**2).real
 
 
-# @profile
 def fbulk(c):
     # bulk free energy density
     return ρ * (c - α)**2 * (β - c)**2
 
 
-# @profile
 def dfdc(c):
     # derivative of bulk free energy density
     return 2 * ρ * (c - α) * (β - c) * (α + β - 2 * c)
 
 
-# @profile
 def dfdc_nonlinear(c):
     return 2 * ρ * ((2 * c - 3 * (α + β)) * c**2 - α**2 * β - α * β**2)
 
 
-# @profile
 def c_x(c_hat, K):
     return np.fft.irfftn(c_hat * 1j * K[0]).real
 
 
-# @profile
 def c_y(c_hat, K):
     return np.fft.irfftn(c_hat * 1j * K[1]).real
 
 
-# @profile
 def free_energy(c, c_hat, K, dx):
     """
     Cf. Trefethen Eqn. 12.5: typical integration is sub-spatially
@@ -73,7 +65,6 @@ def free_energy(c, c_hat, K, dx):
     return dx**2 * (κ/2 * (cx**2 + cy**2) + fbulk(c)).sum()
 
 
-# @profile
 def autocorrelation(data):
     """Compute the auto-correlation / 2-point statistics of a field variable"""
     signal = data - np.mean(data)
@@ -84,12 +75,10 @@ def autocorrelation(data):
     return cor
 
 
-# @profile
 def radial_average(data, r, R):
     return data[(R > r - 0.5) & (R < r + 0.5)].mean()
 
 
-# @profile
 def radial_profile(data, center=None):
     """Take the average in concentric rings around the center of a field"""
     if center is None:
@@ -106,7 +95,6 @@ def radial_profile(data, center=None):
 
 
 class Evolver:
-    # @profile
     def __init__(self, c, c_old, dx):
         self.dx = dx
 
@@ -136,17 +124,14 @@ class Evolver:
         #                           * (np.abs(self.K[1]) < self.nyquist_mode),
         #                             dtype=bool)
 
-    # @profile
     def free_energy(self):
         return free_energy(self.c, self.c_hat, self.K, self.dx)
 
-    # @profile
     def residual(self, numer_coeff, denom_coeff):
         return np.linalg.norm(
             np.abs(self.c_hat_old - numer_coeff * self.dfdc_hat
                    - denom_coeff * self.c_hat_prev).real)
 
-    # @profile
     def sweep(self, numer_coeff, denom_coeff):
         # Always sweep the non-linear terms at least twice
         self.c_hat_prev[:] = self.c_hat
@@ -163,7 +148,6 @@ class Evolver:
 
         return self.residual(numer_coeff, denom_coeff)
 
-    # @profile
     def solve(self, dt, maxsweeps=1000, rtol=7e-4):
         # semi-implicit discretization of the PFHub equation of motion
         residual = 1.0
@@ -196,7 +180,6 @@ class FourierInterpolant:
     on uniform rectangular grids with periodic boundary conditions.
     For derivation, see `fourier-interpolation.ipynb`.
     """
-    # @profile
     def __init__(self, shape):
         """
         Set the "fine mesh" details
@@ -204,7 +187,6 @@ class FourierInterpolant:
         self.shape = shape
         self.fine = None
 
-    # @profile
     def pad(self, v_hat):
         """
         Zero-pad "before and after" coarse data to fit fine mesh size
@@ -220,7 +202,6 @@ class FourierInterpolant:
         z = z.reshape((len(N), 1))
         return np.pad(v_hat, z)
 
-    # @profile
     def upsample(self, v):
         """
         Interpolate the coarse field data $v$ onto the fine mesh
@@ -231,7 +212,6 @@ class FourierInterpolant:
         return scale * np.fft.ifftn(np.fft.ifftshift(u_hat)).real
 
 
-# @profile
 def log_hn(h, n, b=np.log(1000)):
     """
     Support function for plotting 𝒪(hⁿ) on a log-log scale:
@@ -248,7 +228,6 @@ def log_hn(h, n, b=np.log(1000)):
     return np.exp(b) * h**n
 
 
-# @profile
 def progression(start=0):
     """
     Generate a sequence of numbers that progress in logarithmic space:
