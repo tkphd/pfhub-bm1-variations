@@ -67,7 +67,7 @@ args = parser.parse_args()
 dx = args.dx
 dt = args.dt
 
-print(f"Linear stability ~> {κ * M * dt * dx**(-4):.2e}")
+print(f"Linear stability ~> {κ * M * dt * dx**(-4):.2g}")
 
 if args.variant == ".":
     variant = os.path.basename(os.path.realpath("."))
@@ -112,7 +112,7 @@ def write_checkpoint(t, evolver, energies, fname):
                         c=evolver.c,
                         c_old=evolver.c_old)
 
-    report(f"{iodir}/ene.csv", energies)
+    report(ene_file, energies)
 
 
 def write_and_report(t, evolver, energies):

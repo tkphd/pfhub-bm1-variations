@@ -132,7 +132,7 @@ class Evolver:
 
         # coefficient of terms linear in c_hat
         self.linear_coefficient = \
-            2.0 * ρ * (α**2 + 4.0 * α * β + β**2) - α**2 * β - α * β**2 + κ * self.Ksq
+            2.0 * ρ * (α**2 + 4.0 * α * β + β**2 - α**2 * β - α * β**2) + κ * self.Ksq
 
         # # dealias the flux capacitor
         # self.nyquist_mode = kx.max() / 2
@@ -147,7 +147,8 @@ class Evolver:
     # @profile
     def residual(self, numer_coeff, denom_coeff):
         # r = F(xⁿ)
-        return np.abs(np.linalg.norm((1.0 - denom_coeff) * self.c_hat - numer_coeff * self.dfdc_hat)).real
+        # return np.abs(np.linalg.norm((1.0 - denom_coeff) * self.c_hat - numer_coeff * self.dfdc_hat)).real
+        return np.linalg.norm(self.c_hat_old - numer_coeff * self.dfdc_hat - denom_coeff * self.c_hat_prev).real
 
     # @profile
     def sweep(self, numer_coeff, denom_coeff):
@@ -164,10 +165,8 @@ class Evolver:
 
         self.c_sweep[:] = self.c
 
-        return self.residual(numer_coeff, denom_coeff)
-
     # @profile
-    def solve(self, dt, maxsweeps=20, rtol=1e-6):
+    def solve(self, dt, maxsweeps=62, rtol=1e-5):
         # semi-implicit discretization of the PFHub equation of motion
         residual = 1.0
         sweep = 0
@@ -182,19 +181,14 @@ class Evolver:
         numer_coeff = dt * M * self.Ksq  # used in the numerator
         denom_coeff = 1.0 + dt * M * self.Ksq * self.linear_coefficient
 
-        # iteratively update c in place
-        for _ in range(3):
-            self.sweep(numer_coeff, denom_coeff)
-            sweep += 1
-
-        residual = self.residual(numer_coeff, denom_coeff)
-
+        # iteratively update c in place, updating non-linear coefficients
         while residual > rtol and sweep < maxsweeps:
-            self.sweep(numer_coeff, denom_coeff)
+            for _ in range(3):
+                self.sweep(numer_coeff, denom_coeff)
+                sweep += 1
             residual = self.residual(numer_coeff, denom_coeff)
-            sweep += 1
 
-        if sweep >= maxsweeps:
+        if residual > rtol and sweep >= maxsweeps:
             raise ValueError(f"Exceeded {maxsweeps} sweeps with res = {residual}")
 
         return residual, sweep
