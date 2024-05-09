@@ -8,8 +8,6 @@ import numpy as np
 import os
 import pandas as pd
 from parse import compile
-from tqdm import tqdm
-from zipfile import BadZipFile
 
 mpl.use("Agg")
 variant = os.path.basename(os.getcwd())
@@ -35,8 +33,10 @@ for iodir in dirs:
     if deets is not None:
         dt = deets["dt"]
     else:
-        dt = "0.000000"
-    dt = f"{dt:8.06f}"
+        dt = "0.000001"
+    dt = f"{dt:08.06f}"
+    dx = deets["dx"]
+
     if dt in jobs.keys():
         jobs[dt].append(iodir)
     else:
@@ -60,22 +60,9 @@ for dt, dirs in jobs.items():
     plt.ylim(y_lim)
     plt.yscale("log")
 
-    # prepare timestep plot
-
-    plt.figure(2, figsize=(10,8))
-    plt.title(f"\"{variant.capitalize()}\" IC: Timestep")
-
-    plt.xlabel("Time $t$ / [a.u.]")
-    plt.xscale("asinh")
-
-    plt.ylabel("Timestep $\\Delta t$ / [a.u.]")
-    plt.yscale("log")
-
-    print("")
-
     for zord, iodir in enumerate(dirs):
         priority = 10 - 9 * zord / len(dirs)
-        ene = f"{iodir}/ene.csv"
+        ene = f"{iodir}/ene.csv.gz"
         deets = parse_old.parse(iodir)
         if deets is None:
             deets = parse_new.parse(iodir)
@@ -88,6 +75,7 @@ for dt, dirs in jobs.items():
             df = pd.read_csv(ene)
 
             plt.figure(1)
+
             plt.plot(df["time"], df["free_energy"], label=label, zorder=priority)
 
             # indicate current time of the gold standard
@@ -98,35 +86,9 @@ for dt, dirs in jobs.items():
                     color="silver", linestyle="dotted", zorder=priority
                 )
 
-            plt.figure(2)
-            plt.plot(df["time"][1:], np.diff(df["time"]), label=label, zorder=priority)
         except FileNotFoundError:
             df = None
             pass
-
-        pbar = tqdm(sorted(glob.glob(f"{iodir}/c_*.npz")))
-        for npz in pbar:
-            pbar.set_description(iodir)
-            img = npz.replace("npz", "png")
-
-            if not os.path.exists(img):
-                try:
-                    c = np.load(npz)
-                    if np.all(np.isfinite(c["c"])):
-                        deets = parse_npz.parse(npz)
-                        t = int(deets[1])
-
-                        plt.figure(3, figsize=(10, 8))
-                        plt.title(f"\"{variant.capitalize()}\" IC: $\\Delta x={dx}\\ @\\ t={t:,d}$")
-                        plt.xlabel("$x$ / [a.u.]")
-                        plt.ylabel("$y$ / [a.u.]")
-                        plt.colorbar(
-                            plt.imshow(c["c"], interpolation=None, origin="lower")
-                        )
-                        plt.savefig(img, dpi=400, bbox_inches="tight")
-                        plt.close()
-                except BadZipFile:
-                    pass
 
         gc.collect()
 
@@ -134,9 +96,4 @@ for dt, dirs in jobs.items():
     plt.figure(1)
     plt.legend(ncol=2, loc=3, fontsize=6)
     plt.savefig(f"energy_{variant}_dt{dt}.png", dpi=400, bbox_inches="tight")
-    plt.close()
-
-    plt.figure(2)
-    plt.legend(ncol=2, loc=2, fontsize=6)
-    plt.savefig(f"timestep_{variant}_dt{dt}.png", dpi=400, bbox_inches="tight")
     plt.close()

@@ -27,6 +27,7 @@ except ImportError:
     pass
 import sys
 import zipfile
+import zlib
 
 # import from `spectral.py` in same folder as the script
 sys.path.append(os.path.dirname(__file__))
@@ -103,7 +104,7 @@ def upsampled(c_npz, k_npz, job_h, mesh_h=0.0625, interpolant=None):
                                 a=hi_cor,
                                 r=cor_r,
                                 μ=cor_μ)
-        except FileNotFoundError or zipfile.BadZipFile:
+        except FileNotFoundError or zipfile.BadZipFile or zlib.error:
             print("failed (no data).")
             pass
     else:
@@ -111,7 +112,7 @@ def upsampled(c_npz, k_npz, job_h, mesh_h=0.0625, interpolant=None):
             with np.load(k_npz) as npz:
                 hi_res = npz["c"]
                 hi_cor = npz["a"]
-        except FileNotFoundError or zipfile.BadZipFile:
+        except FileNotFoundError or zipfile.BadZipFile or zlib.error:
             print("failed (bad stored data).")
             pass
 

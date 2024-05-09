@@ -164,6 +164,8 @@ class Evolver:
 
         self.c_sweep[:] = self.c
 
+        return self.residual(numer_coeff, denom_coeff)
+
     # @profile
     def solve(self, dt, maxsweeps=20, rtol=1e-6):
         # semi-implicit discretization of the PFHub equation of motion
