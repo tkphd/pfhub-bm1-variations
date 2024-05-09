@@ -48,8 +48,12 @@ def dfdc(c):
 
 
 # @profile
+def dfdc_linear(c):
+    return 2 * ρ * ((α**2 + 2 * α * β + β**2) * c - α**2 * β - α * β**2)
+
+# @profile
 def dfdc_nonlinear(c):
-    return 2 * ρ * ((2 * c - 3 * (α + β)) * c**2 - α**2 * β - α * β**2)
+    return 4.0 * ρ * c**3 - 6.0 * ρ * (α + β) * c**2
 
 
 # @profile
@@ -121,14 +125,14 @@ class Evolver:
         self.dfdc_hat = np.ones_like(self.c_hat)
 
         # prepare auxiliary arrays
-        kx = 2 * π * np.fft.fftfreq(self.c.shape[0], d=self.dx)
-        ky = 2 * π * np.fft.rfftfreq(self.c.shape[1], d=self.dx)
+        kx = 2.0 * π * np.fft.fftfreq(self.c.shape[0], d=self.dx)
+        ky = 2.0 * π * np.fft.rfftfreq(self.c.shape[1], d=self.dx)
         self.K = np.array(np.meshgrid(kx, ky, indexing="ij"), dtype=np.float64)
         self.Ksq = np.sum(self.K * self.K, axis=0, dtype=np.float64)
 
         # coefficient of terms linear in c_hat
         self.linear_coefficient = \
-            2 * ρ * (α**2 + 4 * α * β + β**2) + κ * self.Ksq
+            2.0 * ρ * (α**2 + 4.0 * α * β + β**2) - α**2 * β - α * β**2 + κ * self.Ksq
 
         # # dealias the flux capacitor
         # self.nyquist_mode = kx.max() / 2
@@ -142,9 +146,8 @@ class Evolver:
 
     # @profile
     def residual(self, numer_coeff, denom_coeff):
-        return np.linalg.norm(
-            np.abs(self.c_hat_old - numer_coeff * self.dfdc_hat
-                   - denom_coeff * self.c_hat_prev).real)
+        # r = F(xⁿ)
+        return np.abs(np.linalg.norm((1.0 - denom_coeff) * self.c_hat - numer_coeff * self.dfdc_hat)).real
 
     # @profile
     def sweep(self, numer_coeff, denom_coeff):
@@ -161,27 +164,32 @@ class Evolver:
 
         self.c_sweep[:] = self.c
 
-        return self.residual(numer_coeff, denom_coeff)
-
     # @profile
-    def solve(self, dt, maxsweeps=1000, rtol=7e-4):
+    def solve(self, dt, maxsweeps=20, rtol=1e-6):
         # semi-implicit discretization of the PFHub equation of motion
         residual = 1.0
         sweep = 0
 
         # take a stab at the "right" solution
         # Thanks to @reid-a for contributing this idea!
-        self.c_sweep[:] = 2 * self.c - self.c_old  # reasonable guess
+        self.c_sweep[:] = 2.0 * self.c - self.c_old  # reasonable guess via Taylor expansion
 
         self.c_hat_old[:] = self.c_hat  # required (first term on r.h.s.)
         self.c_old[:] = self.c
 
         numer_coeff = dt * M * self.Ksq  # used in the numerator
-        denom_coeff = 1 + dt * M * self.Ksq * self.linear_coefficient
+        denom_coeff = 1.0 + dt * M * self.Ksq * self.linear_coefficient
 
         # iteratively update c in place
+        for _ in range(3):
+            self.sweep(numer_coeff, denom_coeff)
+            sweep += 1
+
+        residual = self.residual(numer_coeff, denom_coeff)
+
         while residual > rtol and sweep < maxsweeps:
-            residual = self.sweep(numer_coeff, denom_coeff)
+            self.sweep(numer_coeff, denom_coeff)
+            residual = self.residual(numer_coeff, denom_coeff)
             sweep += 1
 
         if sweep >= maxsweeps:
