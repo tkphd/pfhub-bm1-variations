@@ -1,8 +1,8 @@
 # Variations on the PFHub BM 1 Initial Conditions
 
-Source code (Python and Jupyter) for PFHub BM 1a (periodic spinodal
-decomposition) using Steppyngstounes and a semi-implicit spectral solver,
-with variations on the initial condition.
+Source code (Python and Jupyter) for PFHub BM 1a (spinodal decomposition with
+periodic boundary conditions) using [Steppyngstounes][steppyngstounes] and a
+semi-implicit spectral solver, with variations on the initial condition.
 
 * **ori** is the "original" IC, not periodic at all at the boundaries.
 * **per** is a purely periodic IC, with coefficients replaced by even multiples
@@ -25,6 +25,7 @@ folder.
    [`spectral.py`](./spectral.py).
 2. The initial conditions and time-stepping loop are implemented in
    [`spectral-bm1a-variations.py`](./spectral-bm1a-variations.py).
+3. The FFT back-end is provided by [mpi4py-fft][mpifftw].
 
 ## Discretization
 
@@ -34,71 +35,61 @@ folder.
 Broadly, the Cahn-Hilliard equation of motion is
 
 $$
-\frac{\partial c}{\partial t} =
-  M\nabla^2\left(\frac{\partial f}{\partial c} - \kappa \nabla^2 c\right)
+\frac{∂ c}{∂ t} = M ∇²\left(\frac{∂ f}{∂ c} - κ ∇² c\right)
 $$
 
 Using the Fourier transform from real to reciprocal space means convolutions
-(e.g., $\nabla c$ and scalar multiplication) become multiplications in
+(e.g., $∇ c$ and scalar multiplication) become multiplications in
 reciprocal space, while exponents in real space (i.e., $c^{n\neq 1}$) become
 convolutions in reciprocal space. The former simplifies life; the latter does
 not. In practice, convolutions are transformed, and non-linear terms are solved
 in real space and then transformed. Specifically,
 
-$$ \mathfrak{F}\left[\nabla c\right] = i\vec{k}\hat{c} $$
+$$ 𝔉\left[∇ c\right] = i\vec{k}\hat{c} $$
 
-$$ \mathfrak{F}\left[\nabla^2 c\right] = -\vec{k}^2 \hat{c}$$
+$$ 𝔉\left[∇² c\right] = -\vec{k}² \hat{c}$$
 
-$$ \mathfrak{F}\left[\mathrm{const}\right] = \mathrm{const} $$
+$$ 𝔉\left[\mathrm{const}\right] = \mathrm{const} $$
 
 Transforming the equation of motion, we have
 
 $$
-\frac{\partial \hat{c}}{\partial t} = - M\vec{k}^2\left(
-\mathfrak{F}\left[\frac{\partial f}{\partial c}\right] +
-\kappa \vec{k}^2 \hat{c}\right)
+\frac{∂ \hat{c}}{∂ t} = - M\vec{k}²
+\left( 𝔉\left[\frac{∂ f}{∂ c}\right] + κ \vec{k}² \hat{c}\right)
 $$
 
 For the PFHub equations,
 
 $$
-\frac{\partial f}{\partial c} = 2\rho
-(c - c_{\alpha})(c_{\beta} - c)(c_{\alpha} + c_{\beta} - 2 c)
+\frac{∂ f}{∂ c} = 2ρ (c - c_{α})(c_{β} - c)(c_{α} + c_{β} - 2 c)
 $$
 
 which can be expanded out to
 
 $$
-\frac{\partial f}{\partial c} = 2\rho\left[
-2 c^3 - 3(c_{\alpha} + c_{\beta}) c^2 +
-(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} +
-c_{\beta}^2) c - (c_{\alpha}^2 c_{\beta} +
-c_{\alpha} c_{\beta}^2)\right]
+\frac{∂ f}{∂ c} = 2ρ\left[2 c^3 - 3(c_{α} + c_{β}) c +
+(c_{α}² + 4 c_{α} c_{β} + c_{β}²) c - (c_{α}² c_{β} + c_{α} c_{β}²)\right]
 $$
 
 This can be separated into a linear part:
 
 $$
-\partial_{c} f_{\mathrm{linear}} = 2\rho
-\left[(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} +
-c_{\beta}^2) c - (c_{\alpha}^2 c_{\beta} +
-c_{\alpha} c_{\beta}^2)\right]
+∂_{c} f_{\mathrm{linear}} = 2ρ \left[(c_{α}² + 4 c_{α} c_{β} + c_{β}²) c -
+(c_{α}² c_{β} + c_{α} c_{β}²)\right]
 $$
 
 and a non-linear remainder:
 
 $$
-\partial_{c} f_{\mathrm{nonlin}} = 2\rho\left(2 c^3 -
-3(c_{\alpha} + c_{\beta}) c^2\right)
+∂_{c} f_{\mathrm{nonlin}} = 2ρ\left(2 c^3 - 3(c_{α} + c_{β}) c²\right)
 $$
 
 It's straight-forward to transform the linear expression:
 
 $$
-\mathfrak{F}\left[\partial_{c} f_{\mathrm{linear}}\right] =
-2\rho \left[(c_{\alpha}^2 + 4 c_{\alpha} c_{\beta} +
-c_{\beta}^2) \hat{c} - (c_{\alpha}^2 c_{\beta} +
-c_{\alpha} c_{\beta}^2)\right]
+𝔉\left[∂_{c} f_{\mathrm{linear}}\right] =
+2ρ \left[(c_{α}² + 4 c_{α} c_{β} + c_{β}²) \hat{c}
+        - (c_{α}² c_{β} + c_{α} c_{β}²)\right]
 $$
 
 The non-linear remainder must be evaluated in real space, then transformed into
@@ -110,11 +101,9 @@ and rearranging, we arrive at the spectral discretization for this problem:
 
 $$
 \widehat{c_{t + \Delta t}} = \frac{\widehat{c_{t}} -
-\Delta t M \vec{k}^2 \left(\mathfrak{F}\left[\partial_{c}
-f_{\mathrm{nonlin}}\right] - 2\rho(c_{\alpha}^2 c_{\beta} +
-c_{\alpha} c_{\beta}^2)\right)}
-{1 + \Delta t M\left[2\rho\vec{k}^2(c_{\alpha}^2 +
-4 c_{\alpha} c_{\beta} + c_{\beta}^2) + \kappa \vec{k}^4\right]}
+\Delta t M \vec{k}² \left(𝔉\left[∂_{c} f_{\mathrm{nonlin}}\right] -
+2ρ(c_{α}² c_{β} + c_{α} c_{β}²)\right)}{1 + \Delta t M\left[2ρ\vec{k}²(c_{α}² +
+4 c_{α} c_{β} + c_{β}²) + κ \vec{k}^4\right]}
 $$
 
 ## Sweep for Non-Linearity
@@ -163,8 +152,8 @@ def sweep_in_less_time(c, c_old, dt):
             np.abs(c_hat_old - numer_coeff * dfdc_hat
                              - denom_coeff * c_hat_prev)).real)
 
-        c_hat_prev = c_hat_curr
-        c_new = IFFT(c_hat_curr)
+        c_hat_prev[:] = c_hat_curr
+        c_new[:] = IFFT(c_hat_curr)
 
     return c_new
 ```
@@ -189,3 +178,5 @@ converged.
 
 <!-- links -->
 [hann]: https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows
+[mpifftw]: https://mpi4py-fft.readthedocs.io/en/latest/
+[steppyngstounes]: https://pages.nist.gov/steppyngstounes/en/main/index.html

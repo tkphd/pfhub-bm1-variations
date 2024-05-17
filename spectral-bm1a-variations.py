@@ -12,7 +12,6 @@ from argparse import ArgumentParser
 import csv
 import gzip
 import glob
-# from line_profiler import profile
 import numpy as np
 import os
 import pandas as pd
@@ -78,7 +77,7 @@ iodir = f"{args.variant}/dt{dt:8.06f}_dx{dx:08.04f}"
 chkpt = f"{iodir}/checkpoint.npz"
 
 ene_file = f"{iodir}/ene.csv.gz"
-res_file = f"{iodir}/res.csv.gz"
+# res_file = f"{iodir}/res.csv.gz"
 
 if not os.path.exists(iodir):
     os.mkdir(iodir)
@@ -90,13 +89,13 @@ def stopwatch(clock):
 
 
 def start_report():
-    e_head = "runtime,time,free_energy"
+    e_head = "runtime,time,free_energy,max_its,max_res"
     with gzip.open(ene_file, "wt") as fh:
         fh.write(f"{e_head}\n")
 
-    r_head = "time,sweeps,residual"
-    with gzip.open(res_file, "wt") as fh:
-        fh.write(f"{r_head}\n")
+    # r_head = "time,sweeps,residual"
+    # with gzip.open(res_file, "wt") as fh:
+    #     fh.write(f"{r_head}\n")
 
 
 def report(fname, lines):
@@ -209,18 +208,16 @@ def main():
     # === prepare to evolve ===
 
     if not resuming:
-        energies = [[time.time() - startTime, t, evolve_ch.free_energy()]]
-        residues = [[t, 0, 1e-4]]
+        energies = [[time.time() - startTime, t, evolve_ch.free_energy(), 0, 0]]
         write_and_report(t, evolve_ch, energies)
-        report(res_file, residues)
-
-    checkTime = time.time()
 
     for check in CheckpointStepper(start=t,
                                    stops=progression(int(t)),
                                    stop=t_final):
         energies = []
-        residues = []
+        max_res = 0.0
+        max_its = 0.0
+
         stepper = FixedStepper(start=check.begin, stop=check.end, size=dt)
 
         if not cluster_job:
@@ -235,22 +232,16 @@ def main():
             residual, sweeps = evolve_ch.solve(dt)
             t += dt
 
-            residues.append([t, sweeps, residual])
-
-            if not np.isclose(dt, step.want) or stopwatch(checkTime) > 600:  # last step or every 10 minutes
-                energies.append([stopwatch(startTime), t, evolve_ch.free_energy()])
-                report(ene_file, energies)
-                report(res_file, residues)
-                energies = []
-                residues = []
-                checkTime = time.time()
+            max_res = max(residual, max_res)
+            max_its = max(sweeps, max_its)
 
             _ = step.succeeded()
 
         dt = step.want
 
+        energies.append([stopwatch(startTime), t, evolve_ch.free_energy(), max_its, max_res])
+
         write_and_report(t, evolve_ch, energies)
-        report(res_file, residues)
 
         if not np.all(np.isfinite(evolve_ch.c)):
             raise ValueError("Result is not Real!")
