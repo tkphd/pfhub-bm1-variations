@@ -208,7 +208,7 @@ def main():
     # === prepare to evolve ===
 
     if not resuming:
-        energies = [[time.time() - startTime, t, evolve_ch.free_energy(), 0, 0]]
+        energies = [[stopwatch(startTime), t, evolve_ch.free_energy(), 0, 0]]
         write_and_report(t, evolve_ch, energies)
 
     for check in CheckpointStepper(start=t,
@@ -229,7 +229,7 @@ def main():
 
         for step in stepper:
             dt = step.size
-            residual, sweeps = evolve_ch.solve(dt)
+            residual, sweeps = evolve_ch.evolve(dt)
             t += dt
 
             max_res = max(residual, max_res)

@@ -29,6 +29,7 @@ class MidpointNormalize(matplotlib.colors.Normalize):
         x, y = [self.vmin, self.midpoint, self.vmax], [0, 0.5, 1]
         return np.ma.masked_array(np.interp(value, x, y), np.isnan(value))
 
+
 def finterf(c_hat, Ksq):
     # interfacial free energy density
     return κ * FFT.irfftn(Ksq * c_hat**2).real
@@ -45,11 +46,13 @@ def dfdc(c):
 
 
 def dfdc_linear(c):
-    return 2 * ρ * ((α**2 + 2 * α * β + β**2) * c - α**2 * β - α * β**2)
+    return 2 * ρ * (α**2 + 4 * α * β + β**2) * c
 
 
 def dfdc_nonlinear(c):
-    return 2 * ρ * ((2 * c - 3 * (α + β)) * c**2 - α**2 * β - α * β**2)
+    # cf. TK_R6_pp 507, 547-548
+    return 4 * ρ * c**3 - 6 * ρ * (α + β) * c**2 - 2 * ρ * (α**2 * β + α * β**2)
+    # return 2 * ρ * (2 * c**3 - 3 * (α + β) * c**2 - α**2 * β - α * β**2)
 
 
 def c_x(c_hat, K):
@@ -104,17 +107,8 @@ class Evolver:
         self.dx = dx
 
         # prepare real-space arrays
-
-        self.c       = np.array(c.copy())
-        self.c_old   = np.array(c_old.copy())
-        self.c_sweep = np.ones(c.shape)
-
-        # prepare reciprocal-space arrays
-        self.c_hat        = np.array(FFT.rfftn(self.c), dtype=np.cdouble)
-        self.c_hat_old    = np.zeros(self.c_hat.shape, dtype=np.cdouble)
-        self.c_hat_old[:] = self.c_hat.copy()
-        self.c_hat_prev   = np.ones(self.c_hat.shape, dtype=np.cdouble)
-        self.dfdc_hat     = np.ones(self.c_hat.shape, dtype=np.cdouble)
+        self.c     = np.array(c.copy())
+        self.c_old = np.array(c_old.copy())
 
         # crunch auxiliary variables
         kx = 2.0 * π * FFT.fftfreq(self.c.shape[0], d=self.dx)
@@ -122,8 +116,11 @@ class Evolver:
         self.K = np.array(np.meshgrid(kx, ky, indexing="ij"))
         self.Ksq = np.sum(self.K * self.K, axis=0)
 
-        # coefficient of terms linear in c_hat
-        self.linear_coefficient = 2 * ρ * (α**2 + 4 * α * β + β**2) + κ * self.Ksq
+        # prepare reciprocal-space arrays
+        self.c_hat        = np.array(FFT.rfftn(self.c), dtype=np.cdouble)
+        self.c_hat_old    = np.array(self.c_hat.copy())
+        self.c_hat_prev   = np.ones_like(self.c_hat)
+        self.dfdc_hat     = np.ones_like(self.c_hat)
 
     def free_energy(self):
         return free_energy(self.c, self.c_hat, self.K, self.dx)
@@ -135,43 +132,31 @@ class Evolver:
     def sweep(self, numer_coeff, denom_coeff):
         self.c_hat_prev[:] = self.c_hat
 
-        self.dfdc_hat[:] = FFT.rfftn(dfdc_nonlinear(self.c_sweep))
+        self.dfdc_hat[:] = FFT.rfftn(dfdc(self.c))
 
-        self.c_hat[:] = \
-            (self.c_hat_old - numer_coeff * self.dfdc_hat) / denom_coeff
+        self.c_hat[:] = (self.c_hat_old - numer_coeff * self.dfdc_hat) / denom_coeff
 
         self.c[:] = FFT.irfftn(self.c_hat).real
 
-        self.c_sweep[:] = self.c
 
-
-    def solve(self, dt, maxsweeps=20, rtol=1e-6):
+    def evolve(self, dt, maxsweeps=20, rtol=1e-6):
         # semi-implicit discretization of the PFHub equation of motion
 
         sweeps = 0
         residual = 1.0
 
         numer_coeff = dt * M * self.Ksq  # used in the numerator
-        denom_coeff = 1.0 + numer_coeff * self.linear_coefficient
+        denom_coeff = 1.0 + numer_coeff * κ * self.Ksq
 
-        # take a stab at the "right" solution
-        # Thanks to @reid-a for contributing this idea!
-        self.c_sweep[:] = 2.0 * self.c - self.c_old  # reasonable guess via Taylor expansion
-
-        # compute initial guess before updating c_old!
         self.c_old[:] = self.c
         self.c_hat_old[:] = self.c_hat  # required (first term on r.h.s.)
 
-        # iteratively update c_sweep in place, updating non-linear coefficients
+        # Make a reasonable guess at the "right" solution via Taylor expansion
+        # N.B.: Compute initial guess before updating c_old!
+        # Thanks to @reid-a for contributing this idea!
+        self.c[:] = 2.0 * self.c - self.c_old
 
-        # always sweep twice
-        for _ in range(2):
-            self.sweep(numer_coeff, denom_coeff)
-            sweeps += 1
-
-        residual = self.residual(numer_coeff, denom_coeff)
-
-        # keep sweeping until it converges
+        # iteratively update c in place, updating non-linear coefficients
         while residual > rtol and sweeps < maxsweeps:
             self.sweep(numer_coeff, denom_coeff)
             residual = self.residual(numer_coeff, denom_coeff)
