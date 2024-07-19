@@ -2,7 +2,11 @@
 
 import matplotlib
 import numpy as np
-import numpy.fft as FFT
+# import numpy.fft as FFT
+import os
+import pyfftw
+import pyfftw.builders as FFTW
+import pyfftw.interfaces.numpy_fft as FFT
 
 π = np.pi
 L = 200
@@ -42,35 +46,18 @@ def fbulk(c):
 
 def dfdc(c):
     # derivative of bulk free energy density
+    # cf. TK_R6_p551
     return 2 * ρ * (c - α) * (β - c) * (α + β - 2 * c)
 
 
-def dfdc_linear(c):
+def dfdc_lin(c):
+    # derivative of bulk free energy density (contractive/convex part)
     return 2 * ρ * (α**2 + 4 * α * β + β**2) * c
 
 
-def dfdc_nonlinear(c):
-    # cf. TK_R6_pp 507, 547-548
-    return 4 * ρ * c**3 - 6 * ρ * (α + β) * c**2 - 2 * ρ * (α**2 * β + α * β**2)
-    # return 2 * ρ * (2 * c**3 - 3 * (α + β) * c**2 - α**2 * β - α * β**2)
-
-
-def c_x(c_hat, K):
-    return FFT.irfftn(c_hat * 1j * K[0]).real
-
-
-def c_y(c_hat, K):
-    return FFT.irfftn(c_hat * 1j * K[1]).real
-
-
-def free_energy(c, c_hat, K, dx):
-    """
-    Cf. Trefethen Eqn. 12.5: typical integration is sub-spatially
-    accurate, but this trapezoid rule retains accuracy.
-    """
-    cx = c_x(c_hat, K)
-    cy = c_y(c_hat, K)
-    return dx**2 * (κ/2 * (cx**2 + cy**2) + fbulk(c)).sum()
+def dfdc_exc(c):
+    # derivative of bulk free energy density (expansive/concave part)
+    return 2 * ρ * (2 * c**3 - 3 * (α + β) * c**2 - (α**2 * β + α * β**2))
 
 
 def autocorrelation(data):
@@ -78,7 +65,6 @@ def autocorrelation(data):
     signal = data - np.mean(data)
     fft = FFT.rfftn(signal)
     inv = FFT.fftshift(FFT.irfftn(fft * np.conjugate(fft)))
-    # cor = FFT.ifftshift(inv).real / (np.var(signal) * signal.size)
     cor = inv.real / (np.var(signal) * signal.size)
     return cor
 
@@ -104,68 +90,120 @@ def radial_profile(data, center=None):
 
 class Evolver:
     def __init__(self, c, c_old, dx):
-        self.dx = dx
+        sc = list(c.shape)
+        sk = list(sc)
+        sk[-1] = 1 + sk[-1] // 2
 
-        # prepare real-space arrays
-        self.c     = np.array(c.copy())
-        self.c_old = np.array(c_old.copy())
+        self.dx = dx
+        pyfftw.config.PLANNER_EFFORT = 'FFTW_MEASURE'
+        if "OMP_NUM_THREADS" in os.environ.keys():
+            pyfftw.config.NUM_THREADS = int(os.environ["OMP_NUM_THREADS"])
+        else:
+            pyfftw.config.NUM_THREADS = 1
+
+        self.a2 = 0.2  # degree of explicitness
+
+        # allocate spatial arrays
+        self.c     = pyfftw.zeros_aligned(sc)
+        self.c_old = pyfftw.zeros_aligned(sc)
+        self.c_tmp = pyfftw.zeros_aligned(sc)
+
+        self.u     = pyfftw.zeros_aligned(sc)
+        self.u_lin = pyfftw.zeros_aligned(sc)
+        self.u_exc = pyfftw.zeros_aligned(sc)
+
+        # assign field values
+        self.c[:]  = c
+        self.u[:]  = dfdc(self.c)
+        self.c_old[:] = c_old
+
+        # reciprocal arrays
+        fft_c      = FFTW.rfft2(self.c.copy())
+        self.ĉ     = pyfftw.zeros_aligned(sk, dtype=complex)
+        self.ĉ[:]  = fft_c()
+
+        fft_o         = FFTW.rfft2(self.c_old.copy())
+        self.ĉ_old    = pyfftw.zeros_aligned(sk, dtype=complex)
+        self.ĉ_old[:] = fft_o()
+
+        fft_u      = FFTW.rfft2(self.u.copy())
+        self.û     = pyfftw.zeros_aligned(sk, dtype=complex)
+        self.û[:]  = fft_u()
+
+        self.û_lin = pyfftw.zeros_aligned(sk, dtype=complex)
+        self.û_exc = pyfftw.zeros_aligned(sk, dtype=complex)
 
         # crunch auxiliary variables
-        kx = 2.0 * π * FFT.fftfreq(self.c.shape[0], d=self.dx)
-        ky = 2.0 * π * FFT.rfftfreq(self.c.shape[1], d=self.dx)
+        kx = 2.0 * π * FFT.fftfreq(sc[0], d=self.dx)
+        ky = 2.0 * π * FFT.rfftfreq(sc[1], d=self.dx)
         self.K = np.array(np.meshgrid(kx, ky, indexing="ij"))
         self.Ksq = np.sum(self.K * self.K, axis=0)
-
-        # prepare reciprocal-space arrays
-        self.c_hat        = np.array(FFT.rfftn(self.c), dtype=np.cdouble)
-        self.c_hat_old    = np.array(self.c_hat.copy())
-        self.c_hat_prev   = np.ones_like(self.c_hat)
-        self.dfdc_hat     = np.ones_like(self.c_hat)
+        self.K4 = self.Ksq**2
 
     def free_energy(self):
-        return free_energy(self.c, self.c_hat, self.K, self.dx)
+        fcx = FFTW.irfftn(self.ĉ * 1j * self.K[0])
+        fcy = FFTW.irfftn(self.ĉ * 1j * self.K[1])
+
+        cx = fcx().real
+        cy = fcy().real
+
+        return self.dx**2 * (κ/2 * (cx**2 + cy**2) + fbulk(self.c)).sum()
 
     def residual(self, numer_coeff, denom_coeff):
-        # r = F(xⁿ)
-        return np.linalg.norm(self.c_hat_old - numer_coeff * self.dfdc_hat - denom_coeff * self.c_hat_prev).real
+        self.u[:] = dfdc(self.c)
+        fft_u = FFTW.rfft2(self.u.copy())
+        self.û[:] = fft_u()
+
+        return np.linalg.norm(
+            self.ĉ_old - numer_coeff * self.û - denom_coeff * self.ĉ
+        ).real
 
     def sweep(self, numer_coeff, denom_coeff):
-        self.c_hat_prev[:] = self.c_hat
+        self.u_exc[:] = dfdc_exc(self.c)
+        fft_exc = FFTW.rfft2(self.u_exc.copy())
+        self.û_exc[:] = fft_exc()
 
-        self.dfdc_hat[:] = FFT.rfftn(dfdc(self.c))
+        self.u_lin[:] = dfdc_lin(self.c)
+        fft_lin = FFTW.rfft2(self.u_lin.copy())
+        self.û_lin[:] = fft_lin()
 
-        self.c_hat[:] = (self.c_hat_old - numer_coeff * self.dfdc_hat) / denom_coeff
+        self.ĉ[:] = (self.ĉ_old - numer_coeff * (self.û_exc + self.a2 * self.û_lin)) / denom_coeff
 
-        self.c[:] = FFT.irfftn(self.c_hat).real
+        ift_c = FFTW.irfft2(self.ĉ.copy())
+        self.c[:] = ift_c()
 
 
-    def evolve(self, dt, maxsweeps=20, rtol=1e-6):
+    def evolve(self, dt, maxsweeps=10, rtol=1e-6):
         # semi-implicit discretization of the PFHub equation of motion
+        swe = 0
+        res = 1.0
 
-        sweeps = 0
-        residual = 1.0
-
-        numer_coeff = dt * M * self.Ksq  # used in the numerator
-        denom_coeff = 1.0 + numer_coeff * κ * self.Ksq
-
-        self.c_old[:] = self.c
-        self.c_hat_old[:] = self.c_hat  # required (first term on r.h.s.)
+        A_lin = dfdc_lin(1.0)
+        numer_coeff = M * dt * self.Ksq  # used in the numerator
+        denom_coeff = 1 + numer_coeff * ((1 - self.a2) * A_lin +  κ * self.Ksq)
 
         # Make a reasonable guess at the "right" solution via Taylor expansion
         # N.B.: Compute initial guess before updating c_old!
         # Thanks to @reid-a for contributing this idea!
-        self.c[:] = 2.0 * self.c - self.c_old
+        self.c_tmp[:] = 2 * self.c - self.c_old
+
+        self.c_old[:] = self.c
+        self.ĉ_old[:] = self.ĉ
+
+        self.c[:] = self.c_tmp
 
         # iteratively update c in place, updating non-linear coefficients
-        while residual > rtol and sweeps < maxsweeps:
+        while res > rtol and swe < maxsweeps:
             self.sweep(numer_coeff, denom_coeff)
-            residual = self.residual(numer_coeff, denom_coeff)
-            sweeps += 1
+            res = self.residual(numer_coeff, denom_coeff)
+            swe += 1
+            if swe == 1 or (swe % 5) == 0 or swe == maxsweeps:
+                print(f"    sweep {swe:2d}: η={res:,}")
 
-        if sweeps >= maxsweeps:
-            raise ValueError(f"Exceeded {maxsweeps} sweeps with res = {residual}")
+        if swe >= maxsweeps:
+            raise ValueError(f"Exceeded {maxsweeps:,} sweeps with res = {res:,}")
 
-        return residual, sweeps
+        return res, swe
 
 
 class FourierInterpolant:

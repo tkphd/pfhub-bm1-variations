@@ -89,7 +89,7 @@ def stopwatch(clock):
 
 
 def start_report():
-    e_head = "runtime,time,free_energy,max_its,max_res"
+    e_head = "runtime,time,free_energy,max_its,res"
     with gzip.open(ene_file, "wt") as fh:
         fh.write(f"{e_head}\n")
 
@@ -215,8 +215,6 @@ def main():
                                    stops=progression(int(t)),
                                    stop=t_final):
         energies = []
-        max_res = 0.0
-        max_its = 0.0
 
         stepper = FixedStepper(start=check.begin, stop=check.end, size=dt)
 
@@ -225,21 +223,18 @@ def main():
             stepper = tqdm(stepper,
                            desc=f"t->{check.end:7,.0f}",
                            total=int((check.end - check.begin) / dt),
-                           ncols=79)
+                           ncols=75)
 
         for step in stepper:
             dt = step.size
             residual, sweeps = evolve_ch.evolve(dt)
             t += dt
 
-            max_res = max(residual, max_res)
-            max_its = max(sweeps, max_its)
-
             _ = step.succeeded()
 
         dt = step.want
 
-        energies.append([stopwatch(startTime), t, evolve_ch.free_energy(), max_its, max_res])
+        energies.append([stopwatch(startTime), t, evolve_ch.free_energy(), sweeps, residual])
 
         write_and_report(t, evolve_ch, energies)
 
