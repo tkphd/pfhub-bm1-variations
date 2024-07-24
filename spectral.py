@@ -2,7 +2,6 @@
 
 import matplotlib
 import numpy as np
-# import numpy.fft as FFT
 import os
 import pyfftw
 import pyfftw.builders as FFTW
@@ -36,7 +35,9 @@ class MidpointNormalize(matplotlib.colors.Normalize):
 
 def finterf(c_hat, Ksq):
     # interfacial free energy density
-    return κ * FFT.irfftn(Ksq * c_hat**2).real
+    ĉ = Ksq * c_hat**2
+    ift_c = FFTW.irfft2(ĉ)
+    return κ * ift_c().real
 
 
 def fbulk(c):
@@ -51,13 +52,14 @@ def dfdc(c):
 
 
 def dfdc_lin(c):
-    # derivative of bulk free energy density (contractive/convex part)
+    # derivative of bulk free energy density (linnear term)
     return 2 * ρ * (α**2 + 4 * α * β + β**2) * c
 
 
-def dfdc_exc(c):
-    # derivative of bulk free energy density (expansive/concave part)
-    return 2 * ρ * (2 * c**3 - 3 * (α + β) * c**2 - (α**2 * β + α * β**2))
+def dfdc_nln(c0, c):
+    # derivative of bulk free energy density (non-linear terms)
+    # return 4 * ρ * c**3 - 6 * ρ * (α + β) * c**2 - 2 * ρ * (α**2 * β + α * β**2)
+    return 4 * ρ * c0**2 * c - 6 * ρ * (α + β) * c0 * c - 2 * ρ * (α**2 * β + α * β**2)
 
 
 def autocorrelation(data):
@@ -89,121 +91,129 @@ def radial_profile(data, center=None):
 
 
 class Evolver:
-    def __init__(self, c, c_old, dx):
+    def __init__(self, c, c_old, dx, dt):
+        self.dx = dx
+        self.dt = dt
+
         sc = list(c.shape)
         sk = list(sc)
         sk[-1] = 1 + sk[-1] // 2
 
-        self.dx = dx
         pyfftw.config.PLANNER_EFFORT = 'FFTW_MEASURE'
         if "OMP_NUM_THREADS" in os.environ.keys():
             pyfftw.config.NUM_THREADS = int(os.environ["OMP_NUM_THREADS"])
         else:
             pyfftw.config.NUM_THREADS = 1
 
-        self.a2 = 0.2  # degree of explicitness
-
-        # allocate spatial arrays
-        self.c     = pyfftw.zeros_aligned(sc)
-        self.c_old = pyfftw.zeros_aligned(sc)
-        self.c_tmp = pyfftw.zeros_aligned(sc)
-
-        self.u     = pyfftw.zeros_aligned(sc)
-        self.u_lin = pyfftw.zeros_aligned(sc)
-        self.u_exc = pyfftw.zeros_aligned(sc)
-
-        # assign field values
-        self.c[:]  = c
-        self.u[:]  = dfdc(self.c)
-        self.c_old[:] = c_old
-
-        # reciprocal arrays
-        fft_c      = FFTW.rfft2(self.c.copy())
-        self.ĉ     = pyfftw.zeros_aligned(sk, dtype=complex)
-        self.ĉ[:]  = fft_c()
-
-        fft_o         = FFTW.rfft2(self.c_old.copy())
-        self.ĉ_old    = pyfftw.zeros_aligned(sk, dtype=complex)
-        self.ĉ_old[:] = fft_o()
-
-        fft_u      = FFTW.rfft2(self.u.copy())
-        self.û     = pyfftw.zeros_aligned(sk, dtype=complex)
-        self.û[:]  = fft_u()
-
-        self.û_lin = pyfftw.zeros_aligned(sk, dtype=complex)
-        self.û_exc = pyfftw.zeros_aligned(sk, dtype=complex)
-
-        # crunch auxiliary variables
+        # auxiliary variables
         kx = 2.0 * π * FFT.fftfreq(sc[0], d=self.dx)
         ky = 2.0 * π * FFT.rfftfreq(sc[1], d=self.dx)
+
         self.K = np.array(np.meshgrid(kx, ky, indexing="ij"))
         self.Ksq = np.sum(self.K * self.K, axis=0)
-        self.K4 = self.Ksq**2
+
+        self.old_co = M * self.dt * self.Ksq  # used in the numerator
+        self.new_co = 1 + self.old_co * (dfdc_lin(1) + κ * self.Ksq)
+
+        self.nyquist = np.sqrt(np.amax(self.Ksq)) # Nyquist mode
+        self.dealias = pyfftw.byte_align(
+            np.array((1.5 * self.K[0] < self.nyquist) * (1.5 * self.K[1] < self.nyquist)
+                     , dtype=bool))
+
+        # spatial arrays
+        self.c     = pyfftw.zeros_aligned(sc)
+        self.c_old = pyfftw.zeros_aligned(sc)
+        self.c_sweep = pyfftw.zeros_aligned(sc)
+
+        # FFT arrays & Plans
+        self.forward = pyfftw.zeros_aligned(sc)
+        self.reverse = pyfftw.zeros_aligned(sk, dtype=complex)
+
+        self.fft = FFTW.rfft2(self.forward)
+        self.ift = FFTW.irfft2(self.reverse)
+
+        # reciprocal arrays
+        self.ĉ     = pyfftw.zeros_aligned(sk, dtype=complex)
+        self.ĉ_old = pyfftw.zeros_aligned(sk, dtype=complex)
+        self.ĉ_num = pyfftw.zeros_aligned(sk, dtype=complex)  # quicker residuals
+        self.û     = pyfftw.zeros_aligned(sk, dtype=complex)
+
+        # assign field values
+        self.c[:]     = c
+        self.c_old[:] = c_old
+
+        self.forward[:] = self.c
+        self.ĉ[:]       = self.fft()
+
+        self.forward[:] = self.c_old
+        self.ĉ_old[:]   = self.fft()
+
+        self.forward[:] = dfdc(self.c)
+        self.û[:]       = self.fft()
+
 
     def free_energy(self):
-        fcx = FFTW.irfftn(self.ĉ * 1j * self.K[0])
-        fcy = FFTW.irfftn(self.ĉ * 1j * self.K[1])
+        fcx = FFTW.irfft2(self.ĉ * 1j * self.K[0])
+        fcy = FFTW.irfft2(self.ĉ * 1j * self.K[1])
 
         cx = fcx().real
         cy = fcy().real
 
         return self.dx**2 * (κ/2 * (cx**2 + cy**2) + fbulk(self.c)).sum()
 
-    def residual(self, numer_coeff, denom_coeff):
-        self.u[:] = dfdc(self.c)
-        fft_u = FFTW.rfft2(self.u.copy())
-        self.û[:] = fft_u()
 
+    def residual(self):
         return np.linalg.norm(
-            self.ĉ_old - numer_coeff * self.û - denom_coeff * self.ĉ
+            self.ĉ_num - self.new_co * self.ĉ
         ).real
 
-    def sweep(self, numer_coeff, denom_coeff):
-        self.u_exc[:] = dfdc_exc(self.c)
-        fft_exc = FFTW.rfft2(self.u_exc.copy())
-        self.û_exc[:] = fft_exc()
 
-        self.u_lin[:] = dfdc_lin(self.c)
-        fft_lin = FFTW.rfft2(self.u_lin.copy())
-        self.û_lin[:] = fft_lin()
+    def sweep(self):
+        self.forward[:] = dfdc_nln(self.c_sweep, self.c)
+        self.û[:] = self.dealias * self.fft()
 
-        self.ĉ[:] = (self.ĉ_old - numer_coeff * (self.û_exc + self.a2 * self.û_lin)) / denom_coeff
+        self.ĉ_num[:] = self.ĉ_old - self.old_co * self.û
+        self.ĉ[:] = self.ĉ_num / self.new_co
 
-        ift_c = FFTW.irfft2(self.ĉ.copy())
-        self.c[:] = ift_c()
+        self.c_sweep[:] = self.c
+
+        self.reverse[:] = self.ĉ
+        self.c[:] = self.ift()
 
 
-    def evolve(self, dt, maxsweeps=10, rtol=1e-6):
+    def evolve(self, maxsweeps=100, tolerance=1e-4):
+        # Arrays c and c_old should be defined before calling this function.
+
         # semi-implicit discretization of the PFHub equation of motion
-        swe = 0
+        swe = 1  # always sweep once to erase initial "guess"
         res = 1.0
-
-        A_lin = dfdc_lin(1.0)
-        numer_coeff = M * dt * self.Ksq  # used in the numerator
-        denom_coeff = 1 + numer_coeff * ((1 - self.a2) * A_lin +  κ * self.Ksq)
+        l2c = 1.0
 
         # Make a reasonable guess at the "right" solution via Taylor expansion
         # N.B.: Compute initial guess before updating c_old!
         # Thanks to @reid-a for contributing this idea!
-        self.c_tmp[:] = 2 * self.c - self.c_old
+        self.c_sweep[:] = self.c  # previous "guess" for the swept solution
+        self.c[:] = 2 * self.c - self.c_old  # latest approx of the solution
+
+        # c holds a better guess of the solution at the new time,
+        # c_sweep holds the previous guess. The two should converge with sweeping.
+
+        # iteratively update c in place, updating non-linear coefficients
+        self.sweep()
+        while l2c > tolerance and swe < maxsweeps:
+            self.sweep()
+            swe += 1
+            l2c = np.linalg.norm(self.c - self.c_sweep)
+
+        res = self.residual()
 
         self.c_old[:] = self.c
         self.ĉ_old[:] = self.ĉ
 
-        self.c[:] = self.c_tmp
-
-        # iteratively update c in place, updating non-linear coefficients
-        while res > rtol and swe < maxsweeps:
-            self.sweep(numer_coeff, denom_coeff)
-            res = self.residual(numer_coeff, denom_coeff)
-            swe += 1
-            if swe == 1 or (swe % 5) == 0 or swe == maxsweeps:
-                print(f"    sweep {swe:2d}: η={res:,}")
-
         if swe >= maxsweeps:
             raise ValueError(f"Exceeded {maxsweeps:,} sweeps with res = {res:,}")
 
-        return res, swe
+        return swe, res, l2c
 
 
 class FourierInterpolant:

@@ -35,7 +35,7 @@ startTime = time.time()
 
 # System parameters & kinetic coefficients
 
-t_final = 100_000
+t_final = 1_000_000
 L = 200.
 π = np.pi
 
@@ -89,7 +89,7 @@ def stopwatch(clock):
 
 
 def start_report():
-    e_head = "runtime,time,free_energy,max_its,res"
+    e_head = "runtime,time,free_energy,its,res,l2c"
     with gzip.open(ene_file, "wt") as fh:
         fh.write(f"{e_head}\n")
 
@@ -192,14 +192,14 @@ def main():
             c = npz["c"]
             c_old = npz["c_old"]
 
-        evolve_ch = Evolver(c, c_old, dx)
+        evolve_ch = Evolver(c, c_old, dx, dt)
 
     else:
         print(f"Launching a clean '{variant}' simulation")
         c = ic(X, Y)
         t = 0.0
         start_report()
-        evolve_ch = Evolver(c, c, dx)
+        evolve_ch = Evolver(c, c, dx, dt)
 
     # Don't resume finished jobs.
     if t >= t_final or np.isclose(t, t_final):
@@ -208,7 +208,7 @@ def main():
     # === prepare to evolve ===
 
     if not resuming:
-        energies = [[stopwatch(startTime), t, evolve_ch.free_energy(), 0, 0]]
+        energies = [[stopwatch(startTime), t, evolve_ch.free_energy(), 100, 1e-4, 1e-4]]
         write_and_report(t, evolve_ch, energies)
 
     for check in CheckpointStepper(start=t,
@@ -227,14 +227,14 @@ def main():
 
         for step in stepper:
             dt = step.size
-            residual, sweeps = evolve_ch.evolve(dt)
+            sweeps, residual, convergence = evolve_ch.evolve()
             t += dt
 
             _ = step.succeeded()
 
         dt = step.want
 
-        energies.append([stopwatch(startTime), t, evolve_ch.free_energy(), sweeps, residual])
+        energies.append([stopwatch(startTime), t, evolve_ch.free_energy(), sweeps, residual, convergence])
 
         write_and_report(t, evolve_ch, energies)
 
