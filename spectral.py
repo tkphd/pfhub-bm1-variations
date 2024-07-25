@@ -58,8 +58,8 @@ def dfdc_lin(c):
 
 def dfdc_nln(c0, c):
     # derivative of bulk free energy density (non-linear terms)
-    # return 4 * ρ * c**3 - 6 * ρ * (α + β) * c**2 - 2 * ρ * (α**2 * β + α * β**2)
-    return 4 * ρ * c0**2 * c - 6 * ρ * (α + β) * c0 * c - 2 * ρ * (α**2 * β + α * β**2)
+    #      (4 * ρ * c  - 6 * ρ * (α + β)) * c  * c - 2 * ρ * (α**2 * β + α * β**2)
+    return (4 * ρ * c0 - 6 * ρ * (α + β)) * c0 * c - 2 * ρ * (α**2 * β + α * β**2)
 
 
 def autocorrelation(data):
@@ -116,9 +116,9 @@ class Evolver:
         self.new_co = 1 + self.old_co * (dfdc_lin(1) + κ * self.Ksq)
 
         self.nyquist = np.sqrt(np.amax(self.Ksq)) # Nyquist mode
-        self.dealias = pyfftw.byte_align(
-            np.array((1.5 * self.K[0] < self.nyquist) * (1.5 * self.K[1] < self.nyquist)
-                     , dtype=bool))
+        # self.dealias = pyfftw.byte_align(
+        #     np.array((1.5 * self.K[0] < self.nyquist) * (1.5 * self.K[1] < self.nyquist)
+        #              , dtype=bool))
 
         # spatial arrays
         self.c     = pyfftw.zeros_aligned(sc)
@@ -170,7 +170,8 @@ class Evolver:
 
     def sweep(self):
         self.forward[:] = dfdc_nln(self.c_sweep, self.c)
-        self.û[:] = self.dealias * self.fft()
+        # self.û[:] = self.dealias * self.fft()
+        self.û[:] = self.fft()
 
         self.ĉ_num[:] = self.ĉ_old - self.old_co * self.û
         self.ĉ[:] = self.ĉ_num / self.new_co
@@ -180,14 +181,14 @@ class Evolver:
         self.reverse[:] = self.ĉ
         self.c[:] = self.ift()
 
+        return self.residual()
 
-    def evolve(self, maxsweeps=100, tolerance=1e-4):
-        # Arrays c and c_old should be defined before calling this function.
 
+    def evolve(self, maxsweeps=20, residual_tolerance=1e-12, convergence_tolerance=1e-3):
         # semi-implicit discretization of the PFHub equation of motion
-        swe = 1  # always sweep once to erase initial "guess"
-        res = 1.0
         l2c = 1.0
+        res = 1.0
+        swe = 0
 
         # Make a reasonable guess at the "right" solution via Taylor expansion
         # N.B.: Compute initial guess before updating c_old!
@@ -199,18 +200,15 @@ class Evolver:
         # c_sweep holds the previous guess. The two should converge with sweeping.
 
         # iteratively update c in place, updating non-linear coefficients
-        self.sweep()
-        while l2c > tolerance and swe < maxsweeps:
-            self.sweep()
+        while (res > residual_tolerance or l2c > convergence_tolerance) and swe < maxsweeps:
+            res = self.sweep()
             swe += 1
             l2c = np.linalg.norm(self.c - self.c_sweep)
-
-        res = self.residual()
 
         self.c_old[:] = self.c
         self.ĉ_old[:] = self.ĉ
 
-        if swe >= maxsweeps:
+        if swe >= maxsweeps and res > residual_tolerance:
             raise ValueError(f"Exceeded {maxsweeps:,} sweeps with res = {res:,}")
 
         return swe, res, l2c

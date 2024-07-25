@@ -35,17 +35,16 @@ startTime = time.time()
 
 # System parameters & kinetic coefficients
 
-t_final = 1_000_000
+t_final = 100_000
 L = 200.
 π = np.pi
 
 h0 = 2**-4   # 0.0625
 k0 = 2**-20  # 9.5367431640625e-07
 
-# | k0     | CFL      |
-# | ---    | ---      |
-# | 2**-19 | 1.25e+00 |
-# | 2**-20 | 6.25e-01 |
+res_tol = 1e-10  # sweep: tolerance for residual
+con_tol = 1e-3   # sweep: composition convergence
+max_its = 100    # maximum sweeps to achieve tolerance
 
 # Read command-line flags
 
@@ -65,8 +64,9 @@ parser.add_argument("-t", "--dt",
 args = parser.parse_args()
 dx = args.dx
 dt = args.dt
+stab = κ * M * dt * dx**(-4)
 
-print(f"Linear stability ~> {κ * M * dt * dx**(-4):.2g}")
+print(f"Linear stability ~> {stab:.2e}")
 
 if args.variant == ".":
     variant = os.path.basename(os.path.realpath("."))
@@ -77,7 +77,6 @@ iodir = f"{args.variant}/dt{dt:8.06f}_dx{dx:08.04f}"
 chkpt = f"{iodir}/checkpoint.npz"
 
 ene_file = f"{iodir}/ene.csv.gz"
-# res_file = f"{iodir}/res.csv.gz"
 
 if not os.path.exists(iodir):
     os.mkdir(iodir)
@@ -92,10 +91,6 @@ def start_report():
     e_head = "runtime,time,free_energy,its,res,l2c"
     with gzip.open(ene_file, "wt") as fh:
         fh.write(f"{e_head}\n")
-
-    # r_head = "time,sweeps,residual"
-    # with gzip.open(res_file, "wt") as fh:
-    #     fh.write(f"{r_head}\n")
 
 
 def report(fname, lines):
@@ -208,7 +203,7 @@ def main():
     # === prepare to evolve ===
 
     if not resuming:
-        energies = [[stopwatch(startTime), t, evolve_ch.free_energy(), 100, 1e-4, 1e-4]]
+        energies = [[stopwatch(startTime), t, evolve_ch.free_energy(), max_its, res_tol, con_tol]]
         write_and_report(t, evolve_ch, energies)
 
     for check in CheckpointStepper(start=t,
@@ -227,7 +222,7 @@ def main():
 
         for step in stepper:
             dt = step.size
-            sweeps, residual, convergence = evolve_ch.evolve()
+            sweeps, residual, convergence = evolve_ch.evolve(max_its, res_tol, con_tol)
             t += dt
 
             _ = step.succeeded()
