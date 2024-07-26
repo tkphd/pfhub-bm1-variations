@@ -16,26 +16,22 @@ variant = os.path.basename(os.getcwd())
 plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.rainbow(np.linspace(0, 1, 20)))
 
 # my goofy folder naming conventions
-old_pattern = "dt?.????_dx???.????"
-new_pattern = "dt?.??????_dx???.????"
+dir_pattern = "dx???.????"
 parse_old = compile("dt{dt:8f}_dx{dx:8f}")
 parse_new = compile("dx{dx:8f}")
 parse_npz = compile("{}/c_{}.npz")
 
 # survey spectral data
 
-dirs = sorted(np.concatenate([glob.glob(old_pattern), glob.glob(new_pattern)]))
+dirs = sorted(glob.glob(dir_pattern))
 
 jobs = {}
 
 for iodir in dirs:
-    deets = parse_old.parse(iodir)
+    deets = parse_new.parse(iodir)
     if deets is not None:
-        dt = deets["dt"]
-    else:
-        dt = "0.000001"
-    dt = f"{dt:08.06f}"
-    dx = deets["dx"]
+        dx = deets["dx"]
+        dt = 1
 
     if dt in jobs.keys():
         jobs[dt].append(iodir)

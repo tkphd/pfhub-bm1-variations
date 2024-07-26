@@ -19,13 +19,9 @@ try:
     from rich import print
 except ImportError:
     pass
-from steppyngstounes import CheckpointStepper, FixedStepper
+from steppyngstounes import CheckpointStepper, PIDStepper
 import sys
 import time
-
-cluster_job = bool("SLURM_PROCID" in os.environ)
-if not cluster_job:
-    from tqdm import tqdm
 
 sys.path.append(os.path.dirname(__file__))
 from spectral import Evolver, M, κ, progression
@@ -35,17 +31,16 @@ startTime = time.time()
 
 # System parameters & kinetic coefficients
 
-t_final = 100_000
+t_final = 1_000_000
 L = 200.
 π = np.pi
 
 h0 = 2**-4   # 0.0625
 k0 = 2**-20  # 9.5367431640625e-07
 
-# | k0     | CFL      |
-# | ---    | ---      |
-# | 2**-19 | 1.25e+00 |
-# | 2**-20 | 6.25e-01 |
+res_tol = 1e-6  # sweep: tolerance for residual
+con_tol = 0.10   # sweep: composition convergence
+max_its = 100    # maximum sweeps to achieve tolerance
 
 # Read command-line flags
 
@@ -57,27 +52,27 @@ parser.add_argument("-x", "--dx",
                     type=float,
                     default=h0,
                     help=f"mesh resolution: gold standard Δx={h0}")
-parser.add_argument("-t", "--dt",
-                    type=float,
-                    default=k0,
-                    help=f"time resolution: gold standard Δt={k0}")
+# parser.add_argument("-t", "--dt",
+#                     type=float,
+#                     default=k0,
+#                     help=f"time resolution: gold standard Δt={k0}")
 
 args = parser.parse_args()
 dx = args.dx
-dt = args.dt
+dt = dx**4 / (8 * κ * M)
+# stab = κ * M * dt / dx**4
 
-print(f"Linear stability ~> {κ * M * dt * dx**(-4):.2g}")
+print(f"Δt ~> {dt}")
 
 if args.variant == ".":
     variant = os.path.basename(os.path.realpath("."))
 else:
     variant = args.variant
 
-iodir = f"{args.variant}/dt{dt:8.06f}_dx{dx:08.04f}"
+iodir = f"{args.variant}/dx{dx:08.04f}"
 chkpt = f"{iodir}/checkpoint.npz"
 
 ene_file = f"{iodir}/ene.csv.gz"
-# res_file = f"{iodir}/res.csv.gz"
 
 if not os.path.exists(iodir):
     os.mkdir(iodir)
@@ -89,13 +84,9 @@ def stopwatch(clock):
 
 
 def start_report():
-    e_head = "runtime,time,free_energy,max_its,max_res"
+    e_head = "runtime,time,free_energy,mass,dt,its,res,l2c"
     with gzip.open(ene_file, "wt") as fh:
         fh.write(f"{e_head}\n")
-
-    # r_head = "time,sweeps,residual"
-    # with gzip.open(res_file, "wt") as fh:
-    #     fh.write(f"{r_head}\n")
 
 
 def report(fname, lines):
@@ -208,38 +199,38 @@ def main():
     # === prepare to evolve ===
 
     if not resuming:
-        energies = [[time.time() - startTime, t, evolve_ch.free_energy(), 0, 0]]
+        energies = [[stopwatch(startTime), t, evolve_ch.free_energy(), evolve_ch.mass(), dt, max_its, res_tol, con_tol]]
         write_and_report(t, evolve_ch, energies)
+
+    checkTime = t
 
     for check in CheckpointStepper(start=t,
                                    stops=progression(int(t)),
                                    stop=t_final):
         energies = []
-        max_res = 0.0
-        max_its = 0.0
 
-        stepper = FixedStepper(start=check.begin, stop=check.end, size=dt)
-
-        if not cluster_job:
-            # TQDM isn't appropriate when stdout redirects to a file.
-            stepper = tqdm(stepper,
-                           desc=f"t->{check.end:7,.0f}",
-                           total=int((check.end - check.begin) / dt),
-                           ncols=79)
-
-        for step in stepper:
+        for step in PIDStepper(start=check.begin,
+                               stop=check.end,
+                               size=dt,
+                               limiting=False,
+                               proportional=0.078,
+                               integral=0.175,
+                               derivative=0.005):
             dt = step.size
-            residual, sweeps = evolve_ch.solve(dt)
+            sweeps, residual, convergence = evolve_ch.evolve(dt, max_its, res_tol, con_tol)
+
+            rel_err = convergence / con_tol
+
+            if not step.succeeded(error=rel_err):
+                raise(ValueError(f"Could not converge with dt={dt}."))
+
             t += dt
-
-            max_res = max(residual, max_res)
-            max_its = max(sweeps, max_its)
-
-            _ = step.succeeded()
+            if (t - checkTime) > 10 or not np.isclose(step.size, step.want):
+                energies.append([stopwatch(startTime), t, evolve_ch.free_energy(), evolve_ch.mass(), dt, sweeps, residual, convergence])
+                checkTime = t
 
         dt = step.want
 
-        energies.append([stopwatch(startTime), t, evolve_ch.free_energy(), max_its, max_res])
 
         write_and_report(t, evolve_ch, energies)
 

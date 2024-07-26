@@ -165,6 +165,12 @@ previous sweep result was. Once the loop reaches a residual below some
 tolerance, further iterations are a waste of cycles: the "new" solution has
 converged.
 
+## Performance
+
+This code is not as fast as a C-based FFTW implementation.
+It marches roughly 0.01 time units per wall second, or
+80 wall seconds per unit of simulation time.
+
 ## References
 
 * _Coarsening kinetics from a variable-mobility Cahn-Hilliard equation:
