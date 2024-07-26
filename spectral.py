@@ -91,9 +91,8 @@ def radial_profile(data, center=None):
 
 
 class Evolver:
-    def __init__(self, c, c_old, dx, dt):
+    def __init__(self, c, c_old, dx):
         self.dx = dx
-        self.dt = dt
 
         sc = list(c.shape)
         sk = list(sc)
@@ -111,9 +110,6 @@ class Evolver:
 
         self.K = np.array(np.meshgrid(kx, ky, indexing="ij"))
         self.Ksq = np.sum(self.K * self.K, axis=0)
-
-        self.old_co = M * self.dt * self.Ksq  # used in the numerator
-        self.new_co = 1 + self.old_co * (dfdc_lin(1) + κ * self.Ksq)
 
         self.nyquist = np.sqrt(np.amax(self.Ksq)) # Nyquist mode
         # self.dealias = pyfftw.byte_align(
@@ -162,33 +158,40 @@ class Evolver:
         return self.dx**2 * (κ/2 * (cx**2 + cy**2) + fbulk(self.c)).sum()
 
 
-    def residual(self):
+    def mass(self):
+        dV = self.dx**2
+        return dV * np.sum(self.c)
+
+    def residual(self, new_co):
         return np.linalg.norm(
-            self.ĉ_num - self.new_co * self.ĉ
+            self.ĉ_num - new_co * self.ĉ
         ).real
 
 
-    def sweep(self):
+    def sweep(self, old_co, new_co):
         self.forward[:] = dfdc_nln(self.c_sweep, self.c)
         # self.û[:] = self.dealias * self.fft()
         self.û[:] = self.fft()
 
-        self.ĉ_num[:] = self.ĉ_old - self.old_co * self.û
-        self.ĉ[:] = self.ĉ_num / self.new_co
+        self.ĉ_num[:] = self.ĉ_old - old_co * self.û
+        self.ĉ[:] = self.ĉ_num / new_co
 
         self.c_sweep[:] = self.c
 
         self.reverse[:] = self.ĉ
         self.c[:] = self.ift()
 
-        return self.residual()
+        return self.residual(new_co)
 
 
-    def evolve(self, maxsweeps=20, residual_tolerance=1e-12, convergence_tolerance=1e-3):
+    def evolve(self, dt, maxsweeps=20, residual_tolerance=1e-12, convergence_tolerance=1e-3):
         # semi-implicit discretization of the PFHub equation of motion
         l2c = 1.0
         res = 1.0
         swe = 0
+
+        old_co = M * dt * self.Ksq  # used in the numerator
+        new_co = 1 + old_co * (dfdc_lin(1) + κ * self.Ksq)
 
         # Make a reasonable guess at the "right" solution via Taylor expansion
         # N.B.: Compute initial guess before updating c_old!
@@ -201,9 +204,9 @@ class Evolver:
 
         # iteratively update c in place, updating non-linear coefficients
         while (res > residual_tolerance or l2c > convergence_tolerance) and swe < maxsweeps:
-            res = self.sweep()
-            swe += 1
+            res = self.sweep(old_co, new_co)
             l2c = np.linalg.norm(self.c - self.c_sweep)
+            swe += 1
 
         self.c_old[:] = self.c
         self.ĉ_old[:] = self.ĉ
@@ -285,7 +288,7 @@ def progression(start=0):
         so we have to under-shoot
         """
         value = 10**np.ceil(np.log10(start)).astype(int)
-        delta = 10**np.floor(np.log10(start)).astype(int) if value < 10_000 else 1000
+        delta = 10**np.floor(np.log10(start)).astype(int)
 
         while value > start:
             value -= delta
@@ -294,7 +297,5 @@ def progression(start=0):
     while True:
         value += delta
         yield value
-        if (value < 10_000) and (value == 10 * delta):
+        if value == 10 * delta:
             delta = value
-        elif (value == 100_000):
-            delta *= 10
