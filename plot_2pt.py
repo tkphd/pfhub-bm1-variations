@@ -17,6 +17,9 @@ import glob
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.linalg as LA
+import pyfftw
+# import pyfftw.interfaces.numpy_fft as FFT
+import numpy.fft as FFT
 
 import os
 from parse import compile
@@ -34,15 +37,19 @@ sys.path.append(os.path.dirname(__file__))
 
 from spectral import FourierInterpolant, log_hn, radial_profile
 
+pyfftw.config.PLANNER_EFFORT = 'FFTW_ESTIMATE'
+pyfftw.config.NUM_THREADS = 8
+
+
 parse_dx  = compile("{prefix}x{dx:8f}")
 parse_npz = compile("{prefix}/c_{t:8d}.npz")
 
 def correlate(data):
     """Compute the auto-correlation / 2-point statistics of a field variable"""
     signal = data - data.mean()
-    fft = np.fft.rfftn(signal)
+    fft = FFT.rfftn(signal)
     psd = fft * np.conjugate(fft)
-    return np.fft.irfftn(psd).real / (np.var(signal) * signal.size)
+    return FFT.irfftn(psd).real / (np.var(signal) * signal.size)
 
 
 def elapsed(stopwatch):
@@ -87,10 +94,10 @@ def upsampled(c_npz, k_npz, job_h, mesh_h=0.0625, interpolant=None):
             hi_res = interpolant.upsample(lo_res)
             signal = hi_res - hi_res.mean()
 
-            hi_fft = np.fft.fftn(signal)
+            hi_fft = FFT.fftn(signal)
             hi_psd = hi_fft * np.conjugate(hi_fft)
 
-            hi_cor = np.fft.ifftn(hi_psd).real / (np.var(signal) * signal.size)
+            hi_cor = FFT.ifftn(hi_psd).real / (np.var(signal) * signal.size)
             cor_r, cor_μ = radial_profile(hi_cor)
             cor_r = gold_h * np.array(cor_r)
 

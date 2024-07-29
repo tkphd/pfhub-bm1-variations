@@ -230,17 +230,6 @@ class FourierInterpolant:
         self.shape = np.array(shape, dtype=int)
         self.fine = None
 
-        # FFT arrays & Plans
-        sk = list(shape)
-        sk[-1] = 1 + sk[-1] // 2
-        self.sk = np.array(sk, dtype=int)
-
-        self.forward = pyfftw.zeros_aligned(self.shape)
-        self.reverse = pyfftw.zeros_aligned(self.sk, dtype=complex)
-
-        self.fft = FFTW.rfft2(self.forward)
-        self.ift = FFTW.irfft2(self.reverse)
-
     def pad(self, ŵ):
         """
         Zero-pad "before and after" coarse data to fit fine mesh size
@@ -260,10 +249,10 @@ class FourierInterpolant:
         """
         Interpolate the coarse field data $w$ onto the fine mesh
         """
-        ŵ = FFT.fftshift(FFT.fftn(w))
+        ŵ = np.fft.fftshift(np.fft.fftn(w))
         û = self.pad(ŵ)
         scale = np.prod(np.array(û.shape)) / np.prod(np.array(w.shape))
-        return scale * FFT.ifftn(FFT.ifftshift(û)).real
+        return scale * np.fft.ifftn(np.fft.ifftshift(û)).real
 
 
 def log_hn(h, n, b=np.log(1000)):
