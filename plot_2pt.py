@@ -34,11 +34,8 @@ sys.path.append(os.path.dirname(__file__))
 
 from spectral import FourierInterpolant, log_hn, radial_profile
 
-parse_dt  = compile("dt{dt:8f}{suffix}")
 parse_dx  = compile("{prefix}x{dx:8f}")
-parse_dtx = compile("dt{dt:8f}_dx{dx:8f}")
 parse_npz = compile("{prefix}/c_{t:8d}.npz")
-
 
 def correlate(data):
     """Compute the auto-correlation / 2-point statistics of a field variable"""
@@ -89,8 +86,10 @@ def upsampled(c_npz, k_npz, job_h, mesh_h=0.0625, interpolant=None):
 
             hi_res = interpolant.upsample(lo_res)
             signal = hi_res - hi_res.mean()
+
             hi_fft = np.fft.fftn(signal)
             hi_psd = hi_fft * np.conjugate(hi_fft)
+
             hi_cor = np.fft.ifftn(hi_psd).real / (np.var(signal) * signal.size)
             cor_r, cor_μ = radial_profile(hi_cor)
             cor_r = gold_h * np.array(cor_r)
@@ -112,10 +111,12 @@ def upsampled(c_npz, k_npz, job_h, mesh_h=0.0625, interpolant=None):
             with np.load(k_npz) as npz:
                 hi_res = npz["c"]
                 hi_cor = npz["a"]
-        except FileNotFoundError or zipfile.BadZipFile or zlib.error:
-            print("failed (bad stored data).")
+        except FileNotFoundError or zipfile.BadZipFile or zlib.error or KeyError:
+            print(f"failed, bad data in {k_npz}")
             pass
 
+
+    """
     hi_png = k_npz.replace("npz", "png")
 
     if not os.path.exists(hi_png):
@@ -152,6 +153,7 @@ def upsampled(c_npz, k_npz, job_h, mesh_h=0.0625, interpolant=None):
 
         fig.savefig(hi_png, dpi=400, bbox_inches="tight")
         plt.close(fig)
+    """
 
     return hi_res, hi_cor
 
@@ -166,11 +168,9 @@ plt.rcParams["axes.prop_cycle"] = plt.cycler(
 parser = ArgumentParser()
 parser.add_argument("--dx", type=float,
                             help="Candidate Gold Standard resolution")
-parser.add_argument("--dt", type=float,
-                            help="Timestep of interest")
 args = parser.parse_args()
 
-dirs = sorted(glob.glob("dt?.??????_dx???.????"))
+dirs = sorted(glob.glob("dx???.????"))
 
 # get "gold standard" info
 goldir = dirs[0]
@@ -183,14 +183,14 @@ gold_T = gold_par["t_max"]
 if gold_N % 2 != 0:
     raise ValueError("Reference mesh size is not even!")
 
-mesh_h = 2**-4  # min(2**(-4), gold_h)  # 0.00625 == 2**-4
+mesh_h = 2**-4   # min(2**(-4), gold_h)  # 0.00625 == 2**-4
 mesh_N = gold_N  # int(gold_N * gold_h / mesh_h)
 sinterp = FourierInterpolant((mesh_N, mesh_N))
 
 print(f"=== {variant}/{goldir} has reached t={gold_T:,d} ===\n")
 
 # set output image file
-png = f"auto_{variant}_dt{args.dt:8.06f}.png"
+png = f"../img/auto_{variant}_adaptive.png"
 
 plt.figure(1, figsize=(10, 8))
 plt.title(f"\"{variant.capitalize()}\" IC: Auto-Correlation")
@@ -215,6 +215,9 @@ plt.plot(N, log_hn(N, -4, np.log(1e4)), color="silver",
 
 
 # === Interpolate! ===
+
+if not os.path.exists("../img"):
+    os.mkdir("../img")
 
 if not os.path.exists(f"{goldir}/interp"):
     os.mkdir(f"{goldir}/interp")
@@ -277,7 +280,5 @@ if len(gold_npzs) < 50:
     plt.legend(ncol=3, loc=3, fontsize=9)
 
 plt.savefig(png, dpi=400, bbox_inches="tight")
-
-plt.savefig(f"../auto_{variant}.png", dpi=400, bbox_inches="tight")
 
 print(f"\n  Saved image to {png}\n")

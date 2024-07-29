@@ -31,7 +31,7 @@ startTime = time.time()
 
 # System parameters & kinetic coefficients
 
-t_final = 1_000_000
+t_final = 2_000_000
 L = 200.
 π = np.pi
 

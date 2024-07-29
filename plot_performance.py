@@ -20,7 +20,7 @@ jobs = {}
 
 for iodir in goldirs:
     variant, _ = parse.parse("{}/{}000.0625", str(iodir))
-    jobs[variant] = os.path.join(iodir, "ene.csv")
+    jobs[variant] = os.path.join(iodir, "ene.csv.gz")
 
 # plot the runtime performance
 

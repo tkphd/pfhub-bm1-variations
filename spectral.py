@@ -227,32 +227,43 @@ class FourierInterpolant:
         """
         Set the "fine mesh" details
         """
-        self.shape = shape
+        self.shape = np.array(shape, dtype=int)
         self.fine = None
 
-    def pad(self, v_hat):
+        # FFT arrays & Plans
+        sk = list(shape)
+        sk[-1] = 1 + sk[-1] // 2
+        self.sk = np.array(sk, dtype=int)
+
+        self.forward = pyfftw.zeros_aligned(self.shape)
+        self.reverse = pyfftw.zeros_aligned(self.sk, dtype=complex)
+
+        self.fft = FFTW.rfft2(self.forward)
+        self.ift = FFTW.irfft2(self.reverse)
+
+    def pad(self, ŵ):
         """
         Zero-pad "before and after" coarse data to fit fine mesh size
         in 1D or 2D (3D untested), with uniform rectangular grids
 
         Input
         -----
-        v_hat -- Fourier-transformed coarse field data to pad
+        ŵ -- Fourier-transformed coarse field data to pad
         """
         M = np.flip(self.shape)  # transformation rotates the mesh
-        N = np.array(v_hat.shape)
+        N = np.array(ŵ.shape)
         z = np.subtract(M, N, dtype=int) // 2  # ≡ (M - N) // 2
         z = z.reshape((len(N), 1))
-        return np.pad(v_hat, z)
+        return np.pad(ŵ, z)
 
-    def upsample(self, v):
+    def upsample(self, w):
         """
-        Interpolate the coarse field data $v$ onto the fine mesh
+        Interpolate the coarse field data $w$ onto the fine mesh
         """
-        v_hat = FFT.fftshift(FFT.fftn(v))
-        u_hat = self.pad(v_hat)
-        scale = np.prod(np.array(u_hat.shape)) / np.prod(np.array(v.shape))
-        return scale * FFT.ifftn(FFT.ifftshift(u_hat)).real
+        ŵ = FFT.fftshift(FFT.fftn(w))
+        û = self.pad(ŵ)
+        scale = np.prod(np.array(û.shape)) / np.prod(np.array(w.shape))
+        return scale * FFT.ifftn(FFT.ifftshift(û)).real
 
 
 def log_hn(h, n, b=np.log(1000)):
