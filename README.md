@@ -134,7 +134,7 @@ stable; the paper recommends $a_{1} = 2$ and $a_{2} = 0$.
 * Cheng and Rutenberg (2005),
   _Maximally fast coarsening algorithms_,
   DOI: [10.1103/PhysRevE.72.055701](https://doi.org/10.1103/PhysRevE.72.055701)
-* Cheng and Wheeler (2007),
+* Cheng and Warren (2007),
   _Controlling the accuracy of unconditionally stable algorithms in the Cahn-Hilliard equation_,
   DOI: [10.1103/PhysRevE.75.017702](https://doi.org/10.1103/PhysRevE.75.017702)
 
