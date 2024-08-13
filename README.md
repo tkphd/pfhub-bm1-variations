@@ -32,7 +32,7 @@ folder.
 Broadly, the Cahn-Hilliard equation of motion is
 
 $$
-\frac{∂ c}{∂ t} = M ∇²\left\{\frac{∂ f}{∂ c} - κ ∇² c\right\}
+\frac{∂ c}{∂ t} = M ∇²\left{\frac{∂ f}{∂ c} - κ ∇² c\right}
 $$
 
 Using the Fourier transform from real to reciprocal space means convolutions
@@ -87,7 +87,7 @@ $$ f(φ) = ¼\left(1 - φ²\right)²,\ φ \in [-1, 1] $$
 
 $$ \frac{∂ f}{∂ φ} = φ³ - φ $$
 
-$$ \frac{∂ φ}{∂ τ} = ∇²\left\{\frac{∂ f}{∂ φ} - γ ∇² φ\right\} $$
+$$ \frac{∂ φ}{∂ τ} = ∇²\left{\frac{∂ f}{∂ φ} - γ ∇² φ\right} $$
 
 To use the discretization, we need to transform $c$ to $φ$, $t$ to $τ$,
 and $κ$ to $γ$. As our \emph{ansatz}, let's assume a linear scaling
@@ -105,7 +105,7 @@ From this, we can differentiate (ref: TKR6p560):
 
 $$ ∇² c = ½(β - α) ∇²φ $$
 
-$$ \frac{1}{ρMⲦ(β - α)²} \frac{∂ φ}{∂ τ} = ∇²\left\{φ³ - φ - \frac{κ}{ρ(β - α)²} ∇² φ\right\} $$
+$$ \frac{1}{ρMⲦ(β - α)²} \frac{∂ φ}{∂ τ} = ∇²\left{φ³ - φ - \frac{κ}{ρ(β - α)²} ∇² φ\right} $$
 
 Normalizing by the coefficient of $μ(φ)$ yields
 
@@ -116,7 +116,7 @@ $$ Ⲧ = \frac{1}{ρM(β - α)²} $$
 These factors allow us to use Cheng's spectral discretization:
 
 $$
-\left\{1 - Δτ k² (1 - a₁) - Δτ k⁴ γ (1 - a₂)\right\} \widehat{φₙ} = \left\{1 + Δτ k² a₁ - Δτ k⁴ γ a₂\right\} \widehat{φₒ} - Δτ k² \widehat{φₒ³}
+\left{1 - Δτ k² (1 - a₁) - Δτ k⁴ γ (1 - a₂)\right} \widehat{φₙ} = \left{1 + Δτ k² a₁ - Δτ k⁴ γ a₂\right} \widehat{φₒ} - Δτ k² \widehat{φₒ³}
 $$
 
 $a₁$ and $a₂$ controls the stability and degree of implicitness.
