@@ -75,7 +75,7 @@ then assigns the linear terms to the "new" timestep. Doing so, grouping terms,
 and rearranging, we arrive at the spectral discretization for this problem:
 
 $$
-\widehat{c_{t + \Delta t}} = \frac{\widehat{c_{t}} - \Delta t M \vec{k}^{2} \left(\widehat{∂_{c} f_{\mathrm{nonlin}}} - 2ρ(α^{2} β + α β^{2})\right)}{1 + \Delta t M\left[2ρ\vec{k}^{2}(α^{2} + 4 α β + β^{2}) + κ \vec{k}^{4}\right]}
+\widehat{c_{t + Δt}} = \frac{\widehat{c_{t}} - Δt M \vec{k}^{2} \left(\widehat{∂_{c} f_{\mathrm{nonlin}}} - 2ρ(α^{2} β + α β^{2})\right)}{1 + Δt M\left[2ρ\vec{k}^{2}(α^{2} + 4 α β + β^{2}) + κ \vec{k}^{4}\right]}
 $$
 
 ## Stable Solution
@@ -90,14 +90,14 @@ $$ \frac{∂ f}{∂ φ} = φ^{3} - φ $$
 $$ \frac{∂ φ}{∂ τ} = ∇^{2}\left[\frac{∂ f}{∂ φ} - γ ∇^{2} φ\right] $$
 
 To use the discretization, we need to transform $c$ to $φ$, $t$ to $τ$,
-and $κ$ to $γ$. As our \emph{ansatz}, let's assume a linear scaling
+and $κ$ to $γ$. As our _ansatz_, let's assume a linear scaling
 between the field variables. Using the four known domain boundaries
-(α and β for $c$, -1 and 1 for $φ$), linear interpolation yields:
+($α$ and $β$ for $c$, -1 and 1 for $φ$), linear interpolation yields:
 
 $$ c(φ) = \frac{1}{2}(β - α)(1 + φ) $$
 
-Similarly, assume a linear temporal scaling between "our" time $t$
-and Cheng's time $τ$:
+Similarly, assume a linear temporal scaling between "composition" time $t$ and
+"phase" time $τ$:
 
 $$ t = Ⲧ τ$$
 
