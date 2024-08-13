@@ -8,12 +8,9 @@ semi-implicit spectral solver, with variations on the initial condition.
 * **per** is a purely periodic IC, with coefficients replaced by even multiples
   of $\pi/L$ as close to the original values as could be managed. This is
   numerically better-behaved, but produces a "boring" microstructure.
-* **hat** is the original IC everywhere except a zone within $w$ of the
-  boundary, where $c$ smoothly steps to ½. It is, unfortunately, qualitatively
-  no different from the original IC in terms of spectral convergence.
-* **win** is the original IC everywhere, with a [Hann window][hann] dropped on
-  top to produce a system that can be represented using only trigonometric
-  functions. It is currently the "best" IC for spectral solvers.
+* **win** is the original IC everywhere, with [Hann windows][hann] in $x$ and
+  $y$ dropped on top to produce a system that can be represented using only
+  trigonometric functions. It is currently the "best" IC for spectral solvers.
 
 The coefficients are explored in `initial_conditions.py`.
 Some discussion and comparison of the initial conditions is in the `slides`
@@ -25,7 +22,7 @@ folder.
    [`spectral.py`](./spectral.py).
 2. The initial conditions and time-stepping loop are implemented in
    [`spectral-bm1a-variations.py`](./spectral-bm1a-variations.py).
-3. The FFT back-end is provided by [mpi4py-fft][mpifftw].
+3. The FFT back-end is provided by [pyfftw][pyfftw].
 
 ## Discretization
 
@@ -35,7 +32,7 @@ folder.
 Broadly, the Cahn-Hilliard equation of motion is
 
 $$
-\frac{∂ c}{∂ t} = M ∇²\left(\frac{∂ f}{∂ c} - κ ∇² c\right)
+\frac{∂ c}{∂ t} = M ∇²\left\{\frac{∂ f}{∂ c} - κ ∇² c\right\}
 $$
 
 Using the Fourier transform from real to reciprocal space means convolutions
@@ -43,56 +40,34 @@ Using the Fourier transform from real to reciprocal space means convolutions
 reciprocal space, while exponents in real space (i.e., $c^{n\neq 1}$) become
 convolutions in reciprocal space. The former simplifies life; the latter does
 not. In practice, convolutions are transformed, and non-linear terms are solved
-in real space and then transformed. Specifically,
+in real space and then transformed. Specifically (with Dirac's [$\delta$](https://en.wikipedia.org/wiki/Dirac_delta_function)
+representing a unit impulse),
 
-$$ 𝔉\left[∇ c\right] = i\vec{k}\hat{c} $$
+$$ \widehat{∇ c} = i\vec{k}\hat{c} $$
 
-$$ 𝔉\left[∇² c\right] = -\vec{k}² \hat{c}$$
+$$ \widehat{∇² c} = -\vec{k}² \hat{c}$$
 
-$$ 𝔉\left[\mathrm{const}\right] = \mathrm{const} $$
+$$ \widehat{\mathrm{const}} = \delta(\mathrm{const}) $$
 
 Transforming the equation of motion, we have
 
 $$
-\frac{∂ \hat{c}}{∂ t} = - M\vec{k}²
-\left( 𝔉\left[\frac{∂ f}{∂ c}\right] + κ \vec{k}² \hat{c}\right)
+\frac{∂ \hat{c}}{∂ t} = - M \vec{k}² \left( \widehat{\frac{∂ f}{∂ c}} + κ \vec{k}² \hat{c}\right)
 $$
 
 For the PFHub equations,
 
 $$
-\frac{∂ f}{∂ c} = 2ρ (c - c_{α})(c_{β} - c)(c_{α} + c_{β} - 2 c)
+\frac{∂ f}{∂ c} = 2ρ (c - α)(β - c)(α + β - 2 c)
 $$
 
 which can be expanded out to
 
 $$
-\frac{∂ f}{∂ c} = 2ρ\left[2 c^3 - 3(c_{α} + c_{β}) c +
-(c_{α}² + 4 c_{α} c_{β} + c_{β}²) c - (c_{α}² c_{β} + c_{α} c_{β}²)\right]
+\frac{∂ f}{∂ c} = 2ρ\left[2 c³ - 3(α + β) c + (α² + 4 α β + β²) c - (α² β + α β²)\right]
 $$
 
-This can be separated into a linear part:
-
-$$
-∂_{c} f_{\mathrm{linear}} = 2ρ \left[(c_{α}² + 4 c_{α} c_{β} + c_{β}²) c -
-(c_{α}² c_{β} + c_{α} c_{β}²)\right]
-$$
-
-and a non-linear remainder:
-
-$$
-∂_{c} f_{\mathrm{nonlin}} = 2ρ\left(2 c^3 - 3(c_{α} + c_{β}) c²\right)
-$$
-
-It's straight-forward to transform the linear expression:
-
-$$
-𝔉\left[∂_{c} f_{\mathrm{linear}}\right] =
-2ρ \left[(c_{α}² + 4 c_{α} c_{β} + c_{β}²) \hat{c}
-        - (c_{α}² c_{β} + c_{α} c_{β}²)\right]
-$$
-
-The non-linear remainder must be evaluated in real space, then transformed into
+The non-linear terms must be evaluated in real space, then transformed into
 reciprocal space, at each timestep.
 
 A semi-implicit discretization starts with an explicit Euler form,
@@ -100,89 +75,69 @@ then assigns the linear terms to the "new" timestep. Doing so, grouping terms,
 and rearranging, we arrive at the spectral discretization for this problem:
 
 $$
-\widehat{c_{t + \Delta t}} = \frac{\widehat{c_{t}} -
-\Delta t M \vec{k}² \left(𝔉\left[∂_{c} f_{\mathrm{nonlin}}\right] -
-2ρ(c_{α}² c_{β} + c_{α} c_{β}²)\right)}{1 + \Delta t M\left[2ρ\vec{k}²(c_{α}² +
-4 c_{α} c_{β} + c_{β}²) + κ \vec{k}^4\right]}
+\widehat{c_{t + \Delta t}} = \frac{\widehat{c_{t}} - \Delta t M \vec{k}² \left(\widehat{∂_{c} f_{\mathrm{nonlin}}} - 2ρ(α² β + α β²)\right)}{1 + \Delta t M\left[2ρ\vec{k}²(α² + 4 α β + β²) + κ \vec{k}⁴\right]}
 $$
 
-## Sweep for Non-Linearity
+## Stable Solution
 
-The non-linear term on the r.h.s. of the discretized equation of motion can
-make convergence of the solution elusive. The non-linearity can be smoothed out
-by sweeping the solver, rather than directly solving just once. Consider the
-explicit (single-pass) pseudocode marching forward in time:
+Mowei Cheng published an unconditionally stable semi-implicit spectral
+discretization of a simpler, but similar, model:
 
-``` python
-def march_in_time(c, dt):
-    c_hat_old = FFT(c)  # "old" value in k-space
-    dfdc_hat = FFT(dfdc_nonlin(c))  # non-linear piece in k-space
-    numer_coeff = dt * M * Ksq  # coefficient of non-linear terms
-    denom_coeff = 1 + dt * M * Ksq * (2 * ρ * (α**2 + 4 * α * β + β**2) + κ * Ksq)
+$$ f(φ) = ¼\left(1 - φ²\right)²,\ φ \in [-1, 1] $$
 
-    c_hat = (c_hat_old - numer_coeff * dfdc_hat) / denom_coeff
+$$ \frac{∂ f}{∂ φ} = φ³ - φ $$
 
-    c_new = IFFT(c_hat)  # "new" field value
+$$ \frac{∂ φ}{∂ τ} = ∇²\left\{\frac{∂ f}{∂ φ} - γ ∇² φ\right\} $$
 
-    return c_new
-```
+To use the discretization, we need to transform $c$ to $φ$, $t$ to $τ$,
+and $κ$ to $γ$. As our \emph{ansatz}, let's assume a linear scaling
+between the field variables. Using the four known domain boundaries
+(α and β for $c$, -1 and 1 for $φ$), linear interpolation yields:
 
-The sweeping method involves inserting increasingly good "guesses" for the
-argument to the non-linear piece. At first, we use the "old" value, then solve
-the same set of equations using the previous round's output as the new input.
-A slight tweak to this method starts with a better initial guess (h/t @reid-a):
-using the values of the previous two steps, we can use the current and old
-field values to extrapolate the expected new field value. This increases the
-saved state of the machinery, but should produce faster convergence:
+$$ c(φ) = ½(β - α)(1 + φ) $$
 
-``` python
-def sweep_in_less_time(c, c_old, dt):
-    c_new = 2 * c - c_old    # extrapolated field value, fixed in time
-    c_hat_old = FFT(c)       # "old" field in k-space
-    c_hat_prev = FFT(c_old)  # "previous sweep" field in k-space
-    numer_coeff = dt * M * Ksq  # coefficient of non-linear terms
-    denom_coeff = 1 + dt * M * Ksq * (2 * ρ * (α**2 + 4 * α * β + β**2) + κ * Ksq)
-    residual = 1.0
+Similarly, assume a linear temporal scaling between "our" time $t$
+and Cheng's time $τ$:
 
-    while residual > 1e-3:
-        dfdc_hat = fft2(dfdc_nonlin(c_new))
-        c_hat = (c_hat_old - numer_coeff * dfdc_hat) / denom_coeff
+$$ t = Ⲧ τ$$
 
-        residual = np.linalg.norm(
-            np.abs(c_hat_old - numer_coeff * dfdc_hat
-                             - denom_coeff * c_hat_prev)).real)
+From this, we can differentiate (ref: TKR6p560):
 
-        c_hat_prev[:] = c_hat_curr
-        c_new[:] = IFFT(c_hat_curr)
+$$ ∇² c = ½(β - α) ∇²φ $$
 
-    return c_new
-```
+$$ \frac{1}{ρMⲦ(β - α)²} \frac{∂ φ}{∂ τ} = ∇²\left\{φ³ - φ - \frac{κ}{ρ(β - α)²} ∇² φ\right\} $$
 
-Each sweep computes a "new" estimate of the field value using the previous
-value of the non-linear terms. Think of the residual as plugging the
-previous estimate of the field value in: this computes how inaccurate the
-previous sweep result was. Once the loop reaches a residual below some
-tolerance, further iterations are a waste of cycles: the "new" solution has
-converged.
+Normalizing by the coefficient of $μ(φ)$ yields
 
-## Performance
+$$ γ = \frac{κ}{ρ(β - α)²} $$
 
-This code is not as fast as a C-based FFTW implementation.
-It marches roughly 0.01 time units per wall second, or
-80 wall seconds per unit of simulation time.
+$$ Ⲧ = \frac{1}{ρM(β - α)²} $$
+
+These factors allow us to use Cheng's spectral discretization:
+
+$$
+\left\{1 - Δτ k² (1 - a₁) - Δτ k⁴ γ (1 - a₂)\right\} \widehat{φₙ} = \left\{1 + Δτ k² a₁ - Δτ k⁴ γ a₂\right\} \widehat{φₒ} - Δτ k² \widehat{φₒ³}
+$$
+
+$a₁$ and $a₂$ controls the stability and degree of implicitness.
+In this model, $a₁ > 1$ and $a₂ < ½$ are unconditionally stable.
 
 ## References
 
-* _Coarsening kinetics from a variable-mobility Cahn-Hilliard equation:
-  Application of a semi-implicit Fourier spectral method_,
+* Zhu, Chen, Shen, and Tikare (1999),
+  _Coarsening kinetics from a variable-mobility Cahn-Hilliard equation: Application of a semi-implicit Fourier spectral method_,
   DOI: [10.1103/PhysRevE.60.3564](https://doi.org/10.1103/PhysRevE.60.3564)
-* _Maximally fast coarsening algorithms_,
+* Vollmayr-Lee and Rutenberg (2003),
+  _Fast and accurate coarsening simulation with an unconditionally stable time step_,
+  DOI: [10.1103/PhysRevE.68.066703](https://doi.org/10.1103/PhysRevE.68.066703)
+* Cheng and Rutenberg (2005),
+  _Maximally fast coarsening algorithms_,
   DOI: [10.1103/PhysRevE.72.055701](https://doi.org/10.1103/PhysRevE.72.055701)
-* _Controlling the accuracy of unconditionally stable algorithms in the
-  Cahn-Hilliard equation_,
+* Cheng and Wheeler (2007),
+  _Controlling the accuracy of unconditionally stable algorithms in the Cahn-Hilliard equation_,
   DOI: [10.1103/PhysRevE.75.017702](https://doi.org/10.1103/PhysRevE.75.017702)
 
 <!-- links -->
 [hann]: https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows
-[mpifftw]: https://mpi4py-fft.readthedocs.io/en/latest/
+[pyfftw]: https://hgomersall.github.io/pyFFTW/
 [steppyngstounes]: https://pages.nist.gov/steppyngstounes/en/main/index.html
