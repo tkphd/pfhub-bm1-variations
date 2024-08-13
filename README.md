@@ -94,7 +94,7 @@ and $κ$ to $γ$. As our _ansatz_, let's assume a linear scaling
 between the field variables. Using the four known domain boundaries
 ($α$ and $β$ for $c$, -1 and 1 for $φ$), linear interpolation yields:
 
-$$ c(φ) = \frac{1}{2}(β - α)(1 + φ) $$
+$$ c(φ) = \frac{β - α}{2}(1 + φ) $$
 
 Similarly, assume a linear temporal scaling between "composition" time $t$ and
 "phase" time $τ$:
@@ -103,7 +103,7 @@ $$ t = Ⲧ τ$$
 
 From this, we can differentiate (ref: TKR6p560):
 
-$$ ∇^{2} c = \frac{1}{2}(β - α) ∇^{2}φ $$
+$$ ∇^{2} c = \frac{β - α}{2} ∇^{2}φ $$
 
 $$ \frac{1}{ρMⲦ(β - α)^{2}} \frac{∂ φ}{∂ τ} = ∇^{2}\left[φ^{3} - φ - \frac{κ}{ρ(β - α)^{2}} ∇^{2} φ\right] $$
 
