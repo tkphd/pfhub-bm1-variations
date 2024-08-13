@@ -32,7 +32,7 @@ folder.
 Broadly, the Cahn-Hilliard equation of motion is
 
 $$
-\frac{∂ c}{∂ t} = M ∇²\left[\frac{∂ f}{∂ c} - κ ∇² c\right]
+\frac{∂ c}{∂ t} = M ∇^{2}\left[\frac{∂ f}{∂ c} - κ ∇^{2} c\right]
 $$
 
 Using the Fourier transform from real to reciprocal space means convolutions
@@ -45,14 +45,14 @@ representing a unit impulse),
 
 $$ \widehat{∇ c} = i\vec{k}\hat{c} $$
 
-$$ \widehat{∇² c} = -\vec{k}² \hat{c}$$
+$$ \widehat{∇^{2} c} = -k^{2} \hat{c}$$
 
 $$ \widehat{\mathrm{const}} = \delta(\mathrm{const}) $$
 
 Transforming the equation of motion, we have
 
 $$
-\frac{∂ \hat{c}}{∂ t} = - M \vec{k}² \left( \widehat{\frac{∂ f}{∂ c}} + κ \vec{k}² \hat{c}\right)
+\frac{∂ \hat{c}}{∂ t} = - M k^{2} \left( \widehat{\frac{∂ f}{∂ c}} + κ k^{2} \hat{c}\right)
 $$
 
 For the PFHub equations,
@@ -64,7 +64,7 @@ $$
 which can be expanded out to
 
 $$
-\frac{∂ f}{∂ c} = 2ρ\left[2 c³ - 3(α + β) c + (α² + 4 α β + β²) c - (α² β + α β²)\right]
+\frac{∂ f}{∂ c} = 2ρ\left[2 c^{3} - 3(α + β) c + (α^{2} + 4 α β + β^{2}) c - (α^{2} β + α β^{2})\right]
 $$
 
 The non-linear terms must be evaluated in real space, then transformed into
@@ -75,7 +75,7 @@ then assigns the linear terms to the "new" timestep. Doing so, grouping terms,
 and rearranging, we arrive at the spectral discretization for this problem:
 
 $$
-\widehat{c_{t + \Delta t}} = \frac{\widehat{c_{t}} - \Delta t M \vec{k}² \left(\widehat{∂_{c} f_{\mathrm{nonlin}}} - 2ρ(α² β + α β²)\right)}{1 + \Delta t M\left[2ρ\vec{k}²(α² + 4 α β + β²) + κ \vec{k}⁴\right]}
+\widehat{c_{t + \Delta t}} = \frac{\widehat{c_{t}} - \Delta t M \vec{k}^{2} \left(\widehat{∂_{c} f_{\mathrm{nonlin}}} - 2ρ(α^{2} β + α β^{2})\right)}{1 + \Delta t M\left[2ρ\vec{k}^{2}(α^{2} + 4 α β + β^{2}) + κ \vec{k}^{4}\right]}
 $$
 
 ## Stable Solution
@@ -83,18 +83,18 @@ $$
 Mowei Cheng published an unconditionally stable semi-implicit spectral
 discretization of a simpler, but similar, model:
 
-$$ f(φ) = ¼\left(1 - φ²\right)²,\ φ \in [-1, 1] $$
+$$ f(φ) = \frac{1}{4}\left(1 - φ^{2}\right)^{2},\ φ \in [-1, 1] $$
 
-$$ \frac{∂ f}{∂ φ} = φ³ - φ $$
+$$ \frac{∂ f}{∂ φ} = φ^{3} - φ $$
 
-$$ \frac{∂ φ}{∂ τ} = ∇²\left[\frac{∂ f}{∂ φ} - γ ∇² φ\right] $$
+$$ \frac{∂ φ}{∂ τ} = ∇^{2}\left[\frac{∂ f}{∂ φ} - γ ∇^{2} φ\right] $$
 
 To use the discretization, we need to transform $c$ to $φ$, $t$ to $τ$,
 and $κ$ to $γ$. As our \emph{ansatz}, let's assume a linear scaling
 between the field variables. Using the four known domain boundaries
 (α and β for $c$, -1 and 1 for $φ$), linear interpolation yields:
 
-$$ c(φ) = ½(β - α)(1 + φ) $$
+$$ c(φ) = \frac{1}{2}(β - α)(1 + φ) $$
 
 Similarly, assume a linear temporal scaling between "our" time $t$
 and Cheng's time $τ$:
@@ -103,24 +103,25 @@ $$ t = Ⲧ τ$$
 
 From this, we can differentiate (ref: TKR6p560):
 
-$$ ∇² c = ½(β - α) ∇²φ $$
+$$ ∇^{2} c = \frac{1}{2}(β - α) ∇^{2}φ $$
 
-$$ \frac{1}{ρMⲦ(β - α)²} \frac{∂ φ}{∂ τ} = ∇²\left[φ³ - φ - \frac{κ}{ρ(β - α)²} ∇² φ\right] $$
+$$ \frac{1}{ρMⲦ(β - α)^{2}} \frac{∂ φ}{∂ τ} = ∇^{2}\left[φ^{3} - φ - \frac{κ}{ρ(β - α)^{2}} ∇^{2} φ\right] $$
 
 Normalizing by the coefficient of $μ(φ)$ yields
 
-$$ γ = \frac{κ}{ρ(β - α)²} $$
+$$ γ = \frac{κ}{ρ(β - α)^{2}} $$
 
-$$ Ⲧ = \frac{1}{ρM(β - α)²} $$
+$$ Ⲧ = \frac{1}{ρM(β - α)^{2}} $$
 
 These factors allow us to use Cheng's spectral discretization:
 
 $$
-\left[1 - Δτ k² (1 - a₁) - Δτ k⁴ γ (1 - a₂)\right] \widehat{φₙ} = \left[1 + Δτ k² a₁ - Δτ k⁴ γ a₂\right] \widehat{φₒ} - Δτ k² \widehat{φₒ³}
+\left[1 - Δτ k^{2} (1 - a_{1}) - Δτ k^{4} γ (1 - a_{2})\right] \widehat{φ_{\mathrm{new}}} = \left[1 + Δτ k^{2} a_{1} - Δτ k^{4} γ a_{2}\right] \widehat{φ_{\mathrm{old}}} - Δτ k^{2} \widehat{φ_{\mathrm{old}}^{3}}
 $$
 
-$a₁$ and $a₂$ controls the stability and degree of implicitness.
-In this model, $a₁ > 1$ and $a₂ < ½$ are unconditionally stable.
+$a_{1}$ and $a_{2}$ controls the stability and degree of implicitness.
+In this model, $a_{1} > 1$ and $a_{2} < \frac{1}{2}$ are unconditionally
+stable; the paper recommends $a_{1} = 2$ and $a_{2} = 0$.
 
 ## References
 
