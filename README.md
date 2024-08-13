@@ -40,7 +40,7 @@ Using the Fourier transform from real to reciprocal space means convolutions
 reciprocal space, while exponents in real space (i.e., $c^{n\neq 1}$) become
 convolutions in reciprocal space. The former simplifies life; the latter does
 not. In practice, convolutions are transformed, and non-linear terms are solved
-in real space and then transformed. Specifically (with Dirac's [$\delta$](https://en.wikipedia.org/wiki/Dirac_delta_function)
+in real space and then transformed. Specifically (with Dirac's [𝛿](https://en.wikipedia.org/wiki/Dirac_delta_function)
 representing a unit impulse),
 
 $$ \widehat{∇ c} = i\vec{k}\hat{c} $$
@@ -75,7 +75,7 @@ then assigns the linear terms to the "new" timestep. Doing so, grouping terms,
 and rearranging, we arrive at the spectral discretization for this problem:
 
 $$
-\widehat{c_{t + \Delta t}} = \frac{\widehat{c_{t}} - \Delta t M \vec{k}^{2} \left(\widehat{∂_{c} f_{\mathrm{nonlin}}} - 2ρ(α^{2} β + α β^{2})\right)}{1 + \Delta t M\left[2ρ\vec{k}^{2}(α^{2} + 4 α β + β^{2}) + κ \vec{k}^{4}\right]}
+\widehat{c_{t + \Delta t}} = \frac{\widehat{c_{t}} - \Delta t M k^{2} \left(\widehat{∂_{c} f_{\mathrm{nonlin}}} - 2ρ(α^{2} β + α β^{2})\right)}{1 + \Delta t M\left[2ρk^{2}(α^{2} + 4 α β + β^{2}) + κ k^{4}\right]}
 $$
 
 ## Stable Solution
@@ -116,7 +116,7 @@ $$ Ⲧ = \frac{1}{ρM(β - α)^{2}} $$
 These factors allow us to use Cheng's spectral discretization:
 
 $$
-\left[1 - \Delta τ k^{2} (1 - a_{1}) - \Delta τ k^{4} γ (1 - a_{2})\right] \widehat{φ_{\mathrm{new}}} = \left[1 + \Delta τ k^{2} a_{1} - \Delta τ k^{4} γ a_{2}\right] \widehat{φ_{\mathrm{old}}} - \Delta τ k^{2} \widehat{φ_{\mathrm{old}}^{3}}
+\widehat{φ_{\mathrm{new}}} = \frac{\left[1 + \Delta τ k^{2} a_{1} - \Delta τ k^{4} γ a_{2}\right] \widehat{φ_{\mathrm{old}}} - \Delta τ k^{2} \widehat{φ_{\mathrm{old}}^{3}}}{ 1 - \Delta τ k^{2} (1 - a_{1}) -\Delta τ k^{4} γ (1 - a_{2})}
 $$
 
 $a_{1}$ and $a_{2}$ controls the stability and degree of implicitness.
