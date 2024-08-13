@@ -116,7 +116,7 @@ $$ Ⲧ = \frac{1}{ρM(β - α)^{2}} $$
 These factors allow us to use Cheng's spectral discretization:
 
 $$
-\widehat{φ_{\mathrm{new}}} = \frac{\left[1 + \Delta τ k^{2} a_{1} - \Delta τ k^{4} γ a_{2}\right] \widehat{φ_{\mathrm{old}}} - \Delta τ k^{2} \widehat{φ_{\mathrm{old}}^{3}}}{ 1 - \Delta τ k^{2} (1 - a_{1}) -\Delta τ k^{4} γ (1 - a_{2})}
+\widehat{φ_{\mathrm{new}}} = \frac{\left[1 + \Delta τ k^{2}\left(a_{1} - a_{2} k^{2} γ\right)\right] \widehat{φ_{\mathrm{old}}} - \Delta τ k^{2} \widehat{φ_{\mathrm{old}}^{3}}}{1 - \Delta τ k^{2} \left[1 - a_{1} + (1 - a_{2}) k^{2} γ \right]}
 $$
 
 $a_{1}$ and $a_{2}$ controls the stability and degree of implicitness.
