@@ -32,7 +32,7 @@ folder.
 Broadly, the Cahn-Hilliard equation of motion is
 
 $$
-\frac{∂ c}{∂ t} = M ∇^{2}\left[\frac{∂ f}{∂ c} - κ ∇^{2} c\right]
+\frac{∂c}{∂t} = M ∇^{2}\left[\frac{∂f}{∂c} - κ ∇^{2} c\right]
 $$
 
 Using the Fourier transform from real to reciprocal space means convolutions
@@ -40,31 +40,37 @@ Using the Fourier transform from real to reciprocal space means convolutions
 reciprocal space, while exponents in real space (i.e., $c^{n\neq 1}$) become
 convolutions in reciprocal space. The former simplifies life; the latter does
 not. In practice, convolutions are transformed, and non-linear terms are solved
-in real space and then transformed. Specifically (with Dirac's [𝛿](https://en.wikipedia.org/wiki/Dirac_delta_function)
+in real space and then transformed. Specifically (with Dirac's [𝛿][delta]
 representing a unit impulse),
 
-$$ \widehat{∇ c} = i\vec{k}\hat{c} $$
+$$
+\widehat{∇ c} = i\vec{k}\hat{c}
+$$
 
-$$ \widehat{∇^{2} c} = -k^{2} \hat{c}$$
+$$
+\widehat{∇^{2} c} = -k^{2} \hat{c}
+$$
 
-$$ \widehat{\mathrm{const}} = \delta(\mathrm{const}) $$
+$$
+\widehat{\mathrm{const}} = \delta(\mathrm{const})
+$$
 
 Transforming the equation of motion, we have
 
 $$
-\frac{∂ \hat{c}}{∂ t} = - M k^{2} \left( \widehat{\frac{∂ f}{∂ c}} + κ k^{2} \hat{c}\right)
+\frac{∂\hat{c}}{∂t} = -Mk^{2} \left(\widehat{\frac{∂f}{∂c}} + κk^{2}\hat{c}\right)
 $$
 
 For the PFHub equations,
 
 $$
-\tilde{μ}(c) = \frac{∂ f}{∂ c} = 2ρ (c - α)(β - c)(α + β - 2 c)
+\tilde{μ}(c) = \frac{∂f}{∂c} = 2ρ (c-α)(β-c)(α-2c+β)
 $$
 
 which can be expanded out to
 
 $$
-\tilde{μ}(c) = 2ρ\left[2 c^{3} - 3(α + β) c + (α^{2} + 4 α β + β^{2}) c - (α^{2} β + α β^{2})\right]
+\tilde{μ}(c) = 2ρ\left[2c^{3} - 3(α+β)c + (α^{2} + 4αβ + β^{2})c - (α^{2}β + αβ^{2})\right]
 $$
 
 The non-linear terms must be evaluated in real space, then transformed into
@@ -75,54 +81,89 @@ then assigns the linear terms to the "new" timestep. Doing so, grouping terms,
 and rearranging, we arrive at the spectral discretization for this problem:
 
 $$
-\widehat{c_{t + \Delta t}} = \frac{\widehat{c_{t}} - \Delta t M k^{2} \left(\widehat{\tilde{μ}_{\mathrm{nonlin}}} - 2ρ(α^{2} β + α β^{2})\right)}{1 + \Delta t M\left[2ρk^{2}(α^{2} + 4 α β + β^{2}) + κ k^{4}\right]}
+\widehat{c_{t+\Delta t}} = \frac{\widehat{c_{t}} - \Delta tMk^{2} \left(\widehat{\tilde{μ}_{\mathrm{nonlin}}} - 2ρ(α^{2}β + αβ^{2})\right)}{1 + \Delta tM\left[2ρk^{2}(α^{2} + 4αβ + β^{2}) + κk^{4}\right]}
 $$
 
 ## Stable Solution
 
-Mowei Cheng published an unconditionally stable semi-implicit spectral
-discretization of a simpler, but similar, model:
+Mowei Cheng (2007) published an unconditionally stable semi-implicit spectral
+discretization of a simpler, but similar, model. The benefit of this scheme is
+that the timestep can be driven using a power-law relationship with error
+controlled by the prefactor $A$:
 
-$$ f(φ) = \frac{1}{4}\left(1 - φ^{2}\right)^{2},\ φ \in [-1, 1] $$
+$$
+\Delta τ = At_{\mathrm{s}}^{⅔}
+$$
 
-$$ \tilde{μ}(φ) = \frac{∂ f}{∂ φ} = φ^{3} - φ $$
+where $t_{\mathrm{s}}$ is the _structural time_,
 
-$$ \frac{∂ φ}{∂ τ} = ∇^{2}\left[\tilde{μ}(φ) - γ ∇^{2} φ\right] $$
+$$
+t_{\mathrm{s}} = B\varepsilon^{-n}
+$$
+
+where $B = 0.286$ and $n = 3$ for conserved fields and the free energy density
+$\varepsilon = \mathcal{F}/V$.
+
+Cheng's model has fewer parameters than the benchmark; it is summarized below.
+
+$$
+f(φ) = \frac{1}{4}\left(1 - φ^{2}\right)^{2},\ φ \in [-1, 1]
+$$
+
+$$
+\tilde{μ}(φ) = \frac{∂f}{∂φ} = φ^{3} - φ
+$$
+
+$$
+\frac{∂φ}{∂τ} = ∇^{2}\left[\tilde{μ}(φ) - γ∇^{2} φ\right]
+$$
 
 To use the discretization, we need to transform $c$ to $φ$, $t$ to $τ$,
 and $κ$ to $γ$. As our _ansatz_, let's assume a linear scaling
 between the field variables. Using the four known domain boundaries
 ($α$ and $β$ for $c$, -1 and 1 for $φ$), linear interpolation yields:
 
-$$ c(φ) = \frac{β - α}{2}(1 + φ) $$
+$$
+c(φ) = \frac{β - α}{2}(1 + φ)
+$$
 
 Similarly, assume a linear temporal scaling between "composition" time $t$ and
 "phase" time $τ$:
 
-$$ t = Ⲧ τ$$
+$$
+t = Ⲧ τ
+$$
 
 From this, we can differentiate (ref: TKR6p560):
 
-$$ ∇^{2} c = \frac{β - α}{2} ∇^{2}φ $$
+$$
+∇^{2} c = \frac{β - α}{2} ∇^{2}φ
+$$
 
 Substituting these results into the equation of motion, then normalizing by the
 coefficient of $\tilde{μ}(φ)$ yields
 
-$$ \frac{1}{ρMⲦ(β - α)^{2}} \frac{∂ φ}{∂ τ} = ∇^{2}\left[φ^{3} - φ - \frac{κ}{ρ(β - α)^{2}} ∇^{2} φ\right] $$
+$$
+\frac{1}{ρMⲦ(β - α)^{2}} \frac{∂φ}{∂τ} = ∇^{2}\left[φ^{3} - φ - \frac{κ}{ρ(β - α)^{2}}∇^{2}φ\right]
+$$
 
-$$ γ = \frac{κ}{ρ(β - α)^{2}} $$
+$$
+γ = \frac{κ}{ρ(β - α)^{2}}
+$$
 
-$$ Ⲧ = \frac{1}{ρM(β - α)^{2}} $$
+$$
+Ⲧ = \frac{1}{ρM(β - α)^{2}}
+$$
 
 These factors allow us to use Cheng's spectral discretization:
 
 $$
-\widehat{φ_{\mathrm{new}}} = \frac{\left[1 + \Delta τ k^{2}\left(a_{1} - a_{2} k^{2} γ\right)\right] \widehat{φ_{\mathrm{old}}} - \Delta τ k^{2} \widehat{φ_{\mathrm{old}}^{3}}}{1 - \Delta τ k^{2} \left[1 - a_{1} + (1 - a_{2}) k^{2} γ \right]}
+\widehat{φ_{\mathrm{new}}} = \frac{\left[1 + \Delta τk^{2}\left(a_{1} - a_{2}k^{2}γ\right)\right] \widehat{φ_{\mathrm{old}}} - \Delta τk^{2} \widehat{φ_{\mathrm{old}}^{3}}}{1 - \Delta τk^{2} \left[1 - a_{1} + (1 - a_{2})k^{2}γ \right]}
 $$
 
 $a_{1}$ and $a_{2}$ controls the stability and degree of implicitness.
 In this model, $a_{1} > 1$ and $a_{2} < \frac{1}{2}$ are unconditionally
-stable; the paper recommends $a_{1} = 2$ and $a_{2} = 0$.
+stable; the paper recommends $a_{1} = 3$ and $a_{2} = 0$.
 
 ## References
 
@@ -140,6 +181,7 @@ stable; the paper recommends $a_{1} = 2$ and $a_{2} = 0$.
   DOI: [10.1103/PhysRevE.75.017702](https://doi.org/10.1103/PhysRevE.75.017702)
 
 <!-- links -->
+[delta]: https://en.wikipedia.org/wiki/Dirac_delta_function
 [hann]: https://en.wikipedia.org/wiki/Window_function#Hann_and_Hamming_windows
 [pyfftw]: https://hgomersall.github.io/pyFFTW/
 [steppyngstounes]: https://pages.nist.gov/steppyngstounes/en/main/index.html

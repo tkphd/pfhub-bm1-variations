@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-# # PFHub BM 1a in FiPy with Steppyngstounes
-#
-# This notebook implements variations on PFHub Benchmark 1a (Spinodal
-# Decomposition) using PyCahnHilliard and steppyngstounes.
-# The goal is to explore alternative initial conditions that are periodic near
-# the boundaries but otherwise match the specification.
+# This notebook implements variations on PFHub Benchmark 1a
+# (Spinodal Decomposition) using pyfftw and steppyngstounes.
+# The goal is to explore initial conditions that are periodic
+# near the boundaries but otherwise match the specification.
 
 from argparse import ArgumentParser
 import csv
@@ -24,7 +22,7 @@ import sys
 import time
 
 sys.path.append(os.path.dirname(__file__))
-from spectral import Evolver, M, κ, progression
+from spectral import Evolver, L, M, κ, progression
 
 # Start the clock
 startTime = time.time()
@@ -32,7 +30,6 @@ startTime = time.time()
 # System parameters & kinetic coefficients
 
 t_final = 2_000_000
-L = 200.
 π = np.pi
 
 h0 = 2**-4   # 0.0625
@@ -52,10 +49,6 @@ parser.add_argument("-x", "--dx",
                     type=float,
                     default=h0,
                     help=f"mesh resolution: gold standard Δx={h0}")
-# parser.add_argument("-t", "--dt",
-#                     type=float,
-#                     default=k0,
-#                     help=f"time resolution: gold standard Δt={k0}")
 
 args = parser.parse_args()
 dx = args.dx
