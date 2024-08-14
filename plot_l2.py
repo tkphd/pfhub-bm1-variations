@@ -14,6 +14,7 @@ import glob
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.linalg as LA
+import pyfftw
 
 import os
 from parse import compile
@@ -29,13 +30,19 @@ from zipfile import BadZipFile
 sys.path.append(os.path.dirname(__file__))
 
 from spectral import FourierInterpolant as Interpolant
-from spectral import MidpointNormalize, autocorrelation, radial_profile
+from spectral import MidpointNormalize, autocorrelation, radial_profile, set_fft_threads
 
 # my goofy folder naming conventions
 job_pattern = "dx???.????"
 
 parse_dx  = compile("{prefix}x{dx:8f}")
 parse_npz = compile("{prefix}/c_{t:d}.npz")
+
+set_fft_threads()
+
+nthr = pyfftw.config.NUM_THREADS
+if nthr < 1:
+    raise ValueError("Why so few threads? ({nthr})")
 
 def elapsed(stopwatch):
     """

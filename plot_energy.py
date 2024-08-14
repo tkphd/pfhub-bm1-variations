@@ -37,7 +37,7 @@ for iodir in dirs:
     else:
         jobs[dt] = [iodir]
 
-x_lim = (0.0625, 1e6)
+x_lim = (0.0625, 2e6)
 y_lim = (10, 350)
 
 for dt, dirs in jobs.items():
