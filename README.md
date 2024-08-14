@@ -58,13 +58,13 @@ $$
 For the PFHub equations,
 
 $$
-\frac{∂ f}{∂ c} = 2ρ (c - α)(β - c)(α + β - 2 c)
+\tilde{μ}(c) = \frac{∂ f}{∂ c} = 2ρ (c - α)(β - c)(α + β - 2 c)
 $$
 
 which can be expanded out to
 
 $$
-\frac{∂ f}{∂ c} = 2ρ\left[2 c^{3} - 3(α + β) c + (α^{2} + 4 α β + β^{2}) c - (α^{2} β + α β^{2})\right]
+\tilde{μ}(c) = 2ρ\left[2 c^{3} - 3(α + β) c + (α^{2} + 4 α β + β^{2}) c - (α^{2} β + α β^{2})\right]
 $$
 
 The non-linear terms must be evaluated in real space, then transformed into
@@ -75,7 +75,7 @@ then assigns the linear terms to the "new" timestep. Doing so, grouping terms,
 and rearranging, we arrive at the spectral discretization for this problem:
 
 $$
-\widehat{c_{t + \Delta t}} = \frac{\widehat{c_{t}} - \Delta t M k^{2} \left(\widehat{∂_{c} f_{\mathrm{nonlin}}} - 2ρ(α^{2} β + α β^{2})\right)}{1 + \Delta t M\left[2ρk^{2}(α^{2} + 4 α β + β^{2}) + κ k^{4}\right]}
+\widehat{c_{t + \Delta t}} = \frac{\widehat{c_{t}} - \Delta t M k^{2} \left(\widehat{\tilde{μ}_{\mathrm{nonlin}}} - 2ρ(α^{2} β + α β^{2})\right)}{1 + \Delta t M\left[2ρk^{2}(α^{2} + 4 α β + β^{2}) + κ k^{4}\right]}
 $$
 
 ## Stable Solution
@@ -85,9 +85,9 @@ discretization of a simpler, but similar, model:
 
 $$ f(φ) = \frac{1}{4}\left(1 - φ^{2}\right)^{2},\ φ \in [-1, 1] $$
 
-$$ \frac{∂ f}{∂ φ} = φ^{3} - φ $$
+$$ \tilde{μ}(φ) = \frac{∂ f}{∂ φ} = φ^{3} - φ $$
 
-$$ \frac{∂ φ}{∂ τ} = ∇^{2}\left[\frac{∂ f}{∂ φ} - γ ∇^{2} φ\right] $$
+$$ \frac{∂ φ}{∂ τ} = ∇^{2}\left[\tilde{μ}(φ) - γ ∇^{2} φ\right] $$
 
 To use the discretization, we need to transform $c$ to $φ$, $t$ to $τ$,
 and $κ$ to $γ$. As our _ansatz_, let's assume a linear scaling
@@ -107,7 +107,7 @@ $$ ∇^{2} c = \frac{β - α}{2} ∇^{2}φ $$
 
 $$ \frac{1}{ρMⲦ(β - α)^{2}} \frac{∂ φ}{∂ τ} = ∇^{2}\left[φ^{3} - φ - \frac{κ}{ρ(β - α)^{2}} ∇^{2} φ\right] $$
 
-Normalizing by the coefficient of $μ(φ)$ yields
+Normalizing by the coefficient of $\tilde{μ}(φ)$ yields
 
 $$ γ = \frac{κ}{ρ(β - α)^{2}} $$
 
