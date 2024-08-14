@@ -167,18 +167,21 @@ stable; the paper recommends $a_{1} = 3$ and $a_{2} = 0$.
 
 ## References
 
-* Zhu, Chen, Shen, and Tikare (1999),
-  _Coarsening kinetics from a variable-mobility Cahn-Hilliard equation: Application of a semi-implicit Fourier spectral method_,
-  DOI: [10.1103/PhysRevE.60.3564](https://doi.org/10.1103/PhysRevE.60.3564)
-* Vollmayr-Lee and Rutenberg (2003),
-  _Fast and accurate coarsening simulation with an unconditionally stable time step_,
-  DOI: [10.1103/PhysRevE.68.066703](https://doi.org/10.1103/PhysRevE.68.066703)
-* Cheng and Rutenberg (2005),
-  _Maximally fast coarsening algorithms_,
-  DOI: [10.1103/PhysRevE.72.055701](https://doi.org/10.1103/PhysRevE.72.055701)
-* Cheng and Warren (2007),
-  _Controlling the accuracy of unconditionally stable algorithms in the Cahn-Hilliard equation_,
-  DOI: [10.1103/PhysRevE.75.017702](https://doi.org/10.1103/PhysRevE.75.017702)
+Zhu, Chen, Shen, and Tikare (1999),
+_Coarsening kinetics from a variable-mobility Cahn-Hilliard equation: Application of a semi-implicit Fourier spectral method_,
+DOI: [10.1103/PhysRevE.60.3564](https://doi.org/10.1103/PhysRevE.60.3564)
+
+Vollmayr-Lee and Rutenberg (2003),
+_Fast and accurate coarsening simulation with an unconditionally stable time step_,
+DOI: [10.1103/PhysRevE.68.066703](https://doi.org/10.1103/PhysRevE.68.066703)
+
+Cheng and Rutenberg (2005),
+_Maximally fast coarsening algorithms_,
+DOI: [10.1103/PhysRevE.72.055701](https://doi.org/10.1103/PhysRevE.72.055701)
+
+Cheng and Warren (2007),
+_Controlling the accuracy of unconditionally stable algorithms in the Cahn-Hilliard equation_,
+DOI: [10.1103/PhysRevE.75.017702](https://doi.org/10.1103/PhysRevE.75.017702)
 
 <!-- links -->
 [delta]: https://en.wikipedia.org/wiki/Dirac_delta_function
