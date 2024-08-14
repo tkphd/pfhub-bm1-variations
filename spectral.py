@@ -16,6 +16,15 @@ L = 200
 κ = 2.0  # gradient energy coeff
 M = 5.0  # diffusivity
 
+def set_fft_threads(nthr=None):
+    pyfftw.config.PLANNER_EFFORT = 'FFTW_MEASURE'
+    if nthr is not None:
+        pyfftw.config.NUM_THREADS = nthr
+    elif "OMP_NUM_THREADS" in os.environ.keys():
+        pyfftw.config.NUM_THREADS = int(os.environ["OMP_NUM_THREADS"])
+    else:
+        pyfftw.config.NUM_THREADS = 1
+
 
 class MidpointNormalize(matplotlib.colors.Normalize):
     """
@@ -83,7 +92,7 @@ def radial_profile(data, center=None):
     nx, ny = data.shape
     x, y = np.meshgrid(np.arange(nx), np.arange(ny), indexing="ij")
     R = np.sqrt((x - center[0])**2 + (y - center[1])**2)
-    r = np.arange(center[0]+1)
+    r = np.arange(1 + int(0.9 * center[0]))
     ravg = lambda r: data[(R > r - 0.5) & (R < r + 0.5)].mean()
     μ = np.vectorize(ravg)(r)
 
@@ -92,33 +101,35 @@ def radial_profile(data, center=None):
 
 class Evolver:
     def __init__(self, c, c_old, dx):
+        set_fft_threads()
+
         self.dx = dx
 
         sc = list(c.shape)
         sk = list(sc)
         sk[-1] = 1 + sk[-1] // 2
 
-        pyfftw.config.PLANNER_EFFORT = 'FFTW_MEASURE'
-        if "OMP_NUM_THREADS" in os.environ.keys():
-            pyfftw.config.NUM_THREADS = int(os.environ["OMP_NUM_THREADS"])
-        else:
-            pyfftw.config.NUM_THREADS = 1
-
         # auxiliary variables
         kx = 2.0 * π * FFT.fftfreq(sc[0], d=self.dx)
         ky = 2.0 * π * FFT.rfftfreq(sc[1], d=self.dx)
+        k = np.array(np.meshgrid(kx, ky, indexing="ij"))
 
-        self.K = np.array(np.meshgrid(kx, ky, indexing="ij"))
+        # improved scaling in k-space, thanks to Nana Ofori-Opoku
+        Kx = np.array((1 - np.cos(k[0])) * (3 + np.cos(k[1])) / 2)
+        Ky = np.array((1 - np.cos(k[1])) * (3 + np.cos(k[0])) / 2)
+        self.K = np.array([Kx, Ky])
         self.Ksq = np.sum(self.K * self.K, axis=0)
 
-        self.nyquist = np.sqrt(np.amax(self.Ksq)) # Nyquist mode
-        # self.dealias = pyfftw.byte_align(
-        #     np.array((1.5 * self.K[0] < self.nyquist) * (1.5 * self.K[1] < self.nyquist)
-        #              , dtype=bool))
+        self.nyquist = np.sqrt(self.Ksq.max()) # Nyquist mode
+        self.dealias = pyfftw.byte_align(
+            np.array(
+                (1.5 * self.K[0] < self.nyquist) * (1.5 * self.K[1] < self.nyquist),
+                dtype=bool)
+        )
 
         # spatial arrays
-        self.c     = pyfftw.zeros_aligned(sc)
-        self.c_old = pyfftw.zeros_aligned(sc)
+        self.c       = pyfftw.zeros_aligned(sc)
+        self.c_old   = pyfftw.zeros_aligned(sc)
         self.c_sweep = pyfftw.zeros_aligned(sc)
 
         # FFT arrays & Plans
@@ -162,6 +173,7 @@ class Evolver:
         dV = self.dx**2
         return dV * np.sum(self.c)
 
+
     def residual(self, new_co):
         return np.linalg.norm(
             self.ĉ_num - new_co * self.ĉ
@@ -170,8 +182,8 @@ class Evolver:
 
     def sweep(self, old_co, new_co):
         self.forward[:] = dfdc_nln(self.c_sweep, self.c)
-        # self.û[:] = self.dealias * self.fft()
-        self.û[:] = self.fft()
+        # self.û[:] = self.fft()
+        self.û[:] = self.dealias * self.fft()
 
         self.ĉ_num[:] = self.ĉ_old - old_co * self.û
         self.ĉ[:] = self.ĉ_num / new_co
@@ -196,7 +208,7 @@ class Evolver:
         # Make a reasonable guess at the "right" solution via Taylor expansion
         # N.B.: Compute initial guess before updating c_old!
         # Thanks to @reid-a for contributing this idea!
-        self.c_sweep[:] = self.c  # previous "guess" for the swept solution
+        self.c_sweep[:] = self.c   # previous "guess" for the swept solution
         self.c[:] = 2 * self.c - self.c_old  # latest approx of the solution
 
         # c holds a better guess of the solution at the new time,
@@ -227,32 +239,41 @@ class FourierInterpolant:
         """
         Set the "fine mesh" details
         """
-        self.shape = shape
+        set_fft_threads()
+
+        self.shape = np.array(shape, dtype=int)
         self.fine = None
 
-    def pad(self, v_hat):
+        # FFT array & plan
+        self.reverse = pyfftw.zeros_aligned(np.flip(self.shape), dtype=complex)
+        self.ift = FFTW.ifftn(self.reverse)
+
+
+    def pad(self, ŵ):
         """
         Zero-pad "before and after" coarse data to fit fine mesh size
         in 1D or 2D (3D untested), with uniform rectangular grids
 
         Input
         -----
-        v_hat -- Fourier-transformed coarse field data to pad
+        ŵ -- Fourier-transformed coarse field data to pad
         """
-        M = np.flip(self.shape)  # transformation rotates the mesh
-        N = np.array(v_hat.shape)
-        z = np.subtract(M, N, dtype=int) // 2  # ≡ (M - N) // 2
-        z = z.reshape((len(N), 1))
-        return np.pad(v_hat, z)
+        M = np.flip(self.shape)  # FFT rotates the array
+        N = np.array(ŵ.shape)
+        P = np.subtract(M, N, dtype=int) // 2  # ≡ (M - N) // 2
+        P = P.reshape((len(N), 1))
+        return np.pad(ŵ, P)
 
-    def upsample(self, v):
+    def upsample(self, w):
         """
-        Interpolate the coarse field data $v$ onto the fine mesh
+        Interpolate the coarse field data $w$ onto the fine mesh
         """
-        v_hat = FFT.fftshift(FFT.fftn(v))
-        u_hat = self.pad(v_hat)
-        scale = np.prod(np.array(u_hat.shape)) / np.prod(np.array(v.shape))
-        return scale * FFT.ifftn(FFT.ifftshift(u_hat)).real
+        w_fft = FFTW.fftn(w.copy())
+        ŵ = FFT.fftshift(w_fft())
+        û = self.pad(ŵ)
+        self.reverse[:] = FFT.ifftshift(û)
+        scale = np.prod(np.array(û.shape)) / np.prod(np.array(w.shape))
+        return scale * self.ift().real
 
 
 def log_hn(h, n, b=np.log(1000)):

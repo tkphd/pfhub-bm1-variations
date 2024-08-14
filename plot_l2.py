@@ -14,6 +14,7 @@ import glob
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.linalg as LA
+import pyfftw
 
 import os
 from parse import compile
@@ -29,16 +30,19 @@ from zipfile import BadZipFile
 sys.path.append(os.path.dirname(__file__))
 
 from spectral import FourierInterpolant as Interpolant
-from spectral import MidpointNormalize, autocorrelation, radial_profile
+from spectral import MidpointNormalize, autocorrelation, radial_profile, set_fft_threads
 
 # my goofy folder naming conventions
-old_pattern = "dt?.????_dx???.????"
-new_pattern = "dx???.????"
+job_pattern = "dx???.????"
 
-parse_dt  = compile("dt{dt:6f}{suffix}")
 parse_dx  = compile("{prefix}x{dx:8f}")
-parse_dtx = compile("dt{dt:6f}_dx{dx:8f}")
 parse_npz = compile("{prefix}/c_{t:d}.npz")
+
+set_fft_threads()
+
+nthr = pyfftw.config.NUM_THREADS
+if nthr < 1:
+    raise ValueError("Why so few threads? ({nthr})")
 
 def elapsed(stopwatch):
     """
@@ -88,11 +92,9 @@ plt.rcParams["axes.prop_cycle"] = plt.cycler(
 parser = ArgumentParser()
 parser.add_argument("--dx", type=float,
                             help="Candidate Gold Standard resolution")
-parser.add_argument("--dt", type=float,
-                            help="Timestep of interest")
 args = parser.parse_args()
 
-dirs = sorted(glob.glob(old_pattern) + glob.glob(new_pattern))
+dirs = sorted(glob.glob(job_pattern))
 
 # get "gold standard" info
 goldir = dirs[0]
@@ -108,7 +110,7 @@ if gold_N % 2 != 0:
 print(f"=== {variant}/{goldir} has reached t={gold_T} ===\n")
 
 # set output image file
-png = f"norm_{variant}_dt{args.dt:6.04f}.png"
+png = f"norm_{variant}_PIDStepper.png"
 
 plt.figure(1, figsize=(10, 8))
 plt.title(f"\"{variant.capitalize()}\" IC")

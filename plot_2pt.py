@@ -17,6 +17,8 @@ import glob
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.linalg as LA
+import pandas as pd
+import pyfftw.builders as FFTW
 
 import os
 from parse import compile
@@ -32,21 +34,10 @@ import zlib
 # import from `spectral.py` in same folder as the script
 sys.path.append(os.path.dirname(__file__))
 
-from spectral import FourierInterpolant, log_hn, radial_profile
+from spectral import FourierInterpolant, L, log_hn, radial_profile, set_fft_threads
 
-parse_dt  = compile("dt{dt:8f}{suffix}")
 parse_dx  = compile("{prefix}x{dx:8f}")
-parse_dtx = compile("dt{dt:8f}_dx{dx:8f}")
 parse_npz = compile("{prefix}/c_{t:8d}.npz")
-
-
-def correlate(data):
-    """Compute the auto-correlation / 2-point statistics of a field variable"""
-    signal = data - data.mean()
-    fft = np.fft.rfftn(signal)
-    psd = fft * np.conjugate(fft)
-    return np.fft.irfftn(psd).real / (np.var(signal) * signal.size)
-
 
 def elapsed(stopwatch):
     """
@@ -57,7 +48,7 @@ def elapsed(stopwatch):
 
 def sim_details(iodir):
     dx = parse_dx.parse(iodir)["dx"]
-    Nx = np.rint(200. / dx).astype(int)
+    Nx = int(L / dx)
 
     slices = sorted(glob.glob(f"{iodir}/c_*.npz"))
 
@@ -71,12 +62,13 @@ def sim_details(iodir):
 
 
 def upsampled(c_npz, k_npz, job_h, mesh_h=0.0625, interpolant=None):
+    mesh_N = int(L // mesh_h)
+
     hi_res = None
     hi_cor = None
     hi_fft = None
     cor_r  = None
     cor_μ  = None
-    mesh_N = 200 // mesh_h  # int(3200 * mesh_h / 0.0625)
 
     if interpolant is None:
         interpolant = FourierInterpolant((mesh_N, mesh_N))
@@ -89,9 +81,13 @@ def upsampled(c_npz, k_npz, job_h, mesh_h=0.0625, interpolant=None):
 
             hi_res = interpolant.upsample(lo_res)
             signal = hi_res - hi_res.mean()
-            hi_fft = np.fft.fftn(signal)
+            sig_fft = FFTW.fftn(signal.copy())
+
+            hi_fft = sig_fft()
             hi_psd = hi_fft * np.conjugate(hi_fft)
-            hi_cor = np.fft.ifftn(hi_psd).real / (np.var(signal) * signal.size)
+
+            cor_ift = FFTW.ifftn(hi_psd.copy())
+            hi_cor = cor_ift().real / (np.var(signal) * signal.size)
             cor_r, cor_μ = radial_profile(hi_cor)
             cor_r = gold_h * np.array(cor_r)
 
@@ -99,9 +95,6 @@ def upsampled(c_npz, k_npz, job_h, mesh_h=0.0625, interpolant=None):
                                 t=t,
                                 dx=mesh_h,
                                 c=hi_res,
-                                k=hi_fft,
-                                p=hi_psd,
-                                a=hi_cor,
                                 r=cor_r,
                                 μ=cor_μ)
         except FileNotFoundError or zipfile.BadZipFile or zlib.error:
@@ -111,16 +104,27 @@ def upsampled(c_npz, k_npz, job_h, mesh_h=0.0625, interpolant=None):
         try:
             with np.load(k_npz) as npz:
                 hi_res = npz["c"]
-                hi_cor = npz["a"]
-        except FileNotFoundError or zipfile.BadZipFile or zlib.error:
-            print("failed (bad stored data).")
+        except FileNotFoundError or zipfile.BadZipFile or zlib.error or KeyError:
+            print(f"failed, bad data in {k_npz}")
             pass
 
-    hi_png = k_npz.replace("npz", "png")
+    return hi_res
 
-    if not os.path.exists(hi_png):
-        fig, axs = plt.subplots(1, 2, figsize=(10, 4),
-                                constrained_layout=True, sharex=False, sharey=False)
+
+def dataviz(c_npz, job_h, t, png):
+    job_c = None
+    job_r  = None
+    job_μ  = None
+
+    if not os.path.exists(png):
+        with np.load(c_npz) as npz:
+            job_c = npz["c"]
+            job_r = npz["r"]
+            job_μ = npz["μ"]
+
+        fig, axs = plt.subplots(1, 2, figsize=(7.5, 3),
+                                constrained_layout=True,
+                                sharex=False, sharey=False)
         fig.suptitle(
             f"\"{variant.capitalize()}\" IC: $\\Delta x={job_h}\\ @\\ t={t:,d}$")
 
@@ -132,31 +136,27 @@ def upsampled(c_npz, k_npz, job_h, mesh_h=0.0625, interpolant=None):
         axs[1].set_ylabel("$\\sigma$ / [a.u.]")
         axs[1].set_title("power spectrum")
 
-        if cor_r is None or cor_μ is None:
-            try:
-                with np.load(k_npz) as npz:
-                    cor_r = npz["r"]
-                    cor_μ = npz["μ"]
-            except FileNotFoundError:
-                pass
-
-
-        if hi_res is not None:
+        if job_c is not None:
+            job_L = job_c.shape[0] * job_h
             fig.colorbar(
-                axs[0].imshow(hi_res, cmap="coolwarm", clim=(0.3, 0.7),
-                              interpolation=None, origin="lower")
+                axs[0].imshow(job_c,
+                              cmap="coolwarm",
+                              clim=(0.3, 0.7),
+                              extent=(0, job_L, 0, job_L),
+                              interpolation=None,
+                              origin="lower")
             )
 
-        if cor_r is not None:
-            axs[1].plot(cor_r, cor_μ)
+        if job_r is not None:
+            axs[1].plot(job_r, job_μ)
+            axs[1].set_xlim((0, L//2))
 
-        fig.savefig(hi_png, dpi=400, bbox_inches="tight")
+        fig.savefig(png, dpi=400, bbox_inches="tight")
         plt.close(fig)
 
-    return hi_res, hi_cor
-
-
 variant = os.path.basename(os.getcwd())
+
+set_fft_threads()
 
 # reset color cycle for 50 lines
 plt.rcParams["axes.prop_cycle"] = plt.cycler(
@@ -164,13 +164,12 @@ plt.rcParams["axes.prop_cycle"] = plt.cycler(
 
 # parse command-line flags
 parser = ArgumentParser()
-parser.add_argument("--dx", type=float,
-                            help="Candidate Gold Standard resolution")
-parser.add_argument("--dt", type=float,
-                            help="Timestep of interest")
+parser.add_argument("--dx",
+                    type=float,
+                    help="Candidate Gold Standard resolution")
 args = parser.parse_args()
 
-dirs = sorted(glob.glob("dt?.??????_dx???.????"))
+dirs = sorted(glob.glob("dx???.????"))
 
 # get "gold standard" info
 goldir = dirs[0]
@@ -179,18 +178,22 @@ gold_par = sim_details(goldir)
 gold_h = gold_par["dx"]
 gold_N = gold_par["Nx"]
 gold_T = gold_par["t_max"]
+gold_L = gold_h * gold_N
 
 if gold_N % 2 != 0:
     raise ValueError("Reference mesh size is not even!")
 
-mesh_h = 2**-4  # min(2**(-4), gold_h)  # 0.00625 == 2**-4
-mesh_N = gold_N  # int(gold_N * gold_h / mesh_h)
+if not np.isclose(L, gold_L):
+    raise ValueError("Mismatched domain sizes! How‽")
+
+mesh_h = 2**-4  # 0.0625 == 2**-4
+mesh_N = int(gold_N)
 sinterp = FourierInterpolant((mesh_N, mesh_N))
 
 print(f"=== {variant}/{goldir} has reached t={gold_T:,d} ===\n")
 
 # set output image file
-png = f"auto_{variant}_dt{args.dt:8.06f}.png"
+png = f"../img/auto_{variant}_adaptive.png"
 
 plt.figure(1, figsize=(10, 8))
 plt.title(f"\"{variant.capitalize()}\" IC: Auto-Correlation")
@@ -201,23 +204,32 @@ plt.ylabel("$\\ell^2$ norm, $||\\Delta c||_2$ / [a.u.]")
 plt.ylim([5e-14, 5e3])
 
 # plot lines for known orders of accuracy
-h = np.linspace(2 * gold_h, 50, 100)
-N = 200 / h
+hord = np.linspace(2 * gold_h, 50, 100)
+Nord = np.array(L / hord)
 
-plt.plot(N, log_hn(N, -1, np.log(4e3)), color="silver",
+plt.plot(Nord, log_hn(Nord, -1, np.log(4e3)), color="silver",
          label=r"$\mathcal{O}(h^1)$", zorder=0, linestyle="dotted")
-plt.plot(N, log_hn(N, -2, np.log(6e3)), color="silver",
+plt.plot(Nord, log_hn(Nord, -2, np.log(6e3)), color="silver",
          label=r"$\mathcal{O}(h^2)$", zorder=0, linestyle="solid")
-plt.plot(N, log_hn(N, -3, np.log(8e3)), color="silver",
+plt.plot(Nord, log_hn(Nord, -3, np.log(8e3)), color="silver",
          label=r"$\mathcal{O}(h^3)$", zorder=0, linestyle="dashed")
-plt.plot(N, log_hn(N, -4, np.log(1e4)), color="silver",
+plt.plot(Nord, log_hn(Nord, -4, np.log(1e4)), color="silver",
          label=r"$\mathcal{O}(h^4)$", zorder=0, linestyle="dashdot")
-
 
 # === Interpolate! ===
 
+if not os.path.exists("../img"):
+    os.mkdir("../img")
+
 if not os.path.exists(f"{goldir}/interp"):
     os.mkdir(f"{goldir}/interp")
+
+if not os.path.exists(f"{goldir}/img"):
+    os.mkdir(f"{goldir}/img")
+
+odir = f"interp_dx{gold_h:08.06f}"
+if not os.path.exists(odir):
+    os.mkdir(odir)
 
 jobs = {}
 
@@ -228,56 +240,80 @@ for job in dirs:
 
 gold_npzs = sorted(glob.glob(f"{goldir}/c_????????.npz"))
 
-# gold_npzs = [f"{goldir}/c_{x:08d}.npz" for x in range(11)]
-
 for golden in gold_npzs:
     t = parse_npz.parse(golden)["t"]
     kolden = f"{goldir}/interp/k_{t:08d}.npz"
+    gold_png = f"{goldir}/img/c_{t:08d}.png"
+    ell_csv = f"{odir}/l2_{t:08d}.csv"
 
-    resolutions = []
-    norms = []
+    if os.path.exists(ell_csv):
+        df = pd.read_csv(ell_csv, index_col=0)
+    else:
+        df = None
 
-    _, gold_cor = upsampled(golden, kolden, gold_h, mesh_h, sinterp)
+    gold_c = upsampled(golden, kolden, gold_h, mesh_h, sinterp)
 
-    if gold_cor is not None:
+    if gold_c is not None:
         print(f"  Interpolating {variant.capitalize()}s @ t = {t:,d} / {gold_T:,d}")
+        dataviz(kolden, gold_h, t, gold_png)
 
         for jobdir, job_par in jobs.items():
             startNorm = time.time()
             print(f"    {jobdir}:", end=" ")
 
-            terpdir = f"{jobdir}/interp"
-            if not os.path.exists(terpdir):
-                os.mkdir(terpdir)
+            trpdir = f"{jobdir}/interp"
+            if not os.path.exists(trpdir):
+                os.mkdir(trpdir)
+
+            imgdir = f"{jobdir}/img"
+            if not os.path.exists(imgdir):
+                os.mkdir(imgdir)
 
             job_N = job_par["Nx"]
             job_h = job_par["dx"]
 
             job_c_npz = f"{jobdir}/c_{t:08d}.npz"
-            job_k_npz = f"{jobdir}/interp/c_{t:08d}.npz"
+            job_k_npz = f"{trpdir}/c_{t:08d}.npz"
+            job_c_png = f"{imgdir}/c_{t:08d}.png"
 
-            _, job_cor = upsampled(job_c_npz, job_k_npz, job_h, mesh_h, sinterp)
+            ell_two = None
 
-            if gold_cor is not None and job_cor is not None:
-                ell_two = LA.norm(gold_cor - job_cor)
+            if df is not None and jobdir in df.index:
+                ell_two = df.l2[jobdir]
+            else:
+                job_c = upsampled(job_c_npz, job_k_npz, job_h, mesh_h, sinterp)
 
-                resolutions.append(job_N)
-                norms.append(ell_two)
+                if job_c is not None:
+                    ell_two = LA.norm(gold_c - job_c)
 
+                    job_df = pd.DataFrame(
+                        {
+                            "h": job_h,
+                            "N": job_N,
+                            "l2": ell_two
+                        },
+                        index=[jobdir,]
+                    )
+
+                    df = pd.concat((df, job_df), axis=0, join='outer', sort=True)
+
+            if ell_two is not None:
+                dataviz(job_k_npz, job_h, t, job_c_png)
                 watch = elapsed(startNorm)
-                print(f" ℓ² = {ell_two:.02e}  ({watch:2d} s)")
+                print(f" ℓ² = {ell_two:.04e}  ({watch:2d} s)")
+            else:
+                print(f"failed ({watch:2d} s).")
 
             gc.collect()
 
     plt.figure(1)
-    if len(resolutions) > 0:
-        plt.plot(resolutions, norms, marker="o", label=f"$t={t:,d}$")
+    plt.plot(df.N, df.l2, marker="o", label=f"$t={t:,d}$")
+
+    df.to_csv(ell_csv, header=True, index=True, index_label="path")
 
 if len(gold_npzs) < 50:
     plt.legend(ncol=3, loc=3, fontsize=9)
 
 plt.savefig(png, dpi=400, bbox_inches="tight")
-
-plt.savefig(f"../auto_{variant}.png", dpi=400, bbox_inches="tight")
 
 print(f"\n  Saved image to {png}\n")

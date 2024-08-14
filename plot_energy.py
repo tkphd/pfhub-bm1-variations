@@ -17,7 +17,6 @@ plt.rcParams["axes.prop_cycle"] = plt.cycler("color", plt.cm.rainbow(np.linspace
 
 # my goofy folder naming conventions
 dir_pattern = "dx???.????"
-parse_old = compile("dt{dt:8f}_dx{dx:8f}")
 parse_new = compile("dx{dx:8f}")
 parse_npz = compile("{}/c_{}.npz")
 
@@ -38,7 +37,7 @@ for iodir in dirs:
     else:
         jobs[dt] = [iodir]
 
-x_lim = (0.0625, 1e6)
+x_lim = (0.0625, 2e6)
 y_lim = (10, 350)
 
 for dt, dirs in jobs.items():
@@ -59,7 +58,7 @@ for dt, dirs in jobs.items():
     for zord, iodir in enumerate(dirs):
         priority = 10 - 9 * zord / len(dirs)
         ene = f"{iodir}/ene.csv.gz"
-        deets = parse_old.parse(iodir)
+        deets = parse_new.parse(iodir)
         if deets is None:
             deets = parse_new.parse(iodir)
 

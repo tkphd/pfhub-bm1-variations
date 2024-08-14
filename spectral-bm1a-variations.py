@@ -31,16 +31,16 @@ startTime = time.time()
 
 # System parameters & kinetic coefficients
 
-t_final = 1_000_000
+t_final = 2_000_000
 L = 200.
 π = np.pi
 
 h0 = 2**-4   # 0.0625
 k0 = 2**-20  # 9.5367431640625e-07
 
-res_tol = 1e-6  # sweep: tolerance for residual
-con_tol = 0.10   # sweep: composition convergence
-max_its = 100    # maximum sweeps to achieve tolerance
+res_tol = 1e-7  # sweep: tolerance for residual
+con_tol = 0.01  # sweep: composition convergence
+max_its = 1000  # maximum sweeps to achieve tolerance
 
 # Read command-line flags
 
@@ -202,7 +202,6 @@ def main():
         energies = [[stopwatch(startTime), t, evolve_ch.free_energy(), evolve_ch.mass(), dt, max_its, res_tol, con_tol]]
         write_and_report(t, evolve_ch, energies)
 
-    checkTime = t
 
     for check in CheckpointStepper(start=t,
                                    stops=progression(int(t)),
@@ -213,31 +212,30 @@ def main():
                                stop=check.end,
                                size=dt,
                                limiting=False,
-                               proportional=0.078,
+                               proportional=0.080,
                                integral=0.175,
                                derivative=0.005):
             dt = step.size
             sweeps, residual, convergence = evolve_ch.evolve(dt, max_its, res_tol, con_tol)
 
-            rel_err = convergence / con_tol
+            # weight the number of sweeps as well as the convergence
+            con_err = convergence / con_tol
+            swp_err = max(1.0, float(sweeps) / 9)
+            rel_err = np.sqrt(con_err * swp_err)
 
             if not step.succeeded(error=rel_err):
                 raise(ValueError(f"Could not converge with dt={dt}."))
 
             t += dt
-            if (t - checkTime) > 10 or not np.isclose(step.size, step.want):
-                energies.append([stopwatch(startTime), t, evolve_ch.free_energy(), evolve_ch.mass(), dt, sweeps, residual, convergence])
-                checkTime = t
+            energies.append([stopwatch(startTime), t, evolve_ch.free_energy(), evolve_ch.mass(), dt, sweeps, residual, convergence])
 
         dt = step.want
 
-
         write_and_report(t, evolve_ch, energies)
 
-        if not np.all(np.isfinite(evolve_ch.c)):
-            raise ValueError("Result is not Real!")
-
         _ = check.succeeded()
+
+    print(f"Simulation complete at t={t:,}.\n")
 
 if __name__ == "__main__":
     main()
