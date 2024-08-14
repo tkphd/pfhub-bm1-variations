@@ -105,9 +105,10 @@ From this, we can differentiate (ref: TKR6p560):
 
 $$ ∇^{2} c = \frac{β - α}{2} ∇^{2}φ $$
 
-$$ \frac{1}{ρMⲦ(β - α)^{2}} \frac{∂ φ}{∂ τ} = ∇^{2}\left[φ^{3} - φ - \frac{κ}{ρ(β - α)^{2}} ∇^{2} φ\right] $$
+Substituting these results into the equation of motion, then normalizing by the
+coefficient of $\tilde{μ}(φ)$ yields
 
-Normalizing by the coefficient of $\tilde{μ}(φ)$ yields
+$$ \frac{1}{ρMⲦ(β - α)^{2}} \frac{∂ φ}{∂ τ} = ∇^{2}\left[φ^{3} - φ - \frac{κ}{ρ(β - α)^{2}} ∇^{2} φ\right] $$
 
 $$ γ = \frac{κ}{ρ(β - α)^{2}} $$
 
