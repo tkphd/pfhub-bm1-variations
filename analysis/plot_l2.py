@@ -26,19 +26,17 @@ except ImportError:
 import sys
 from zipfile import BadZipFile
 
-# import from `spectral.py` in same folder as the script
-sys.path.append(os.path.dirname(__file__))
+# # import from `spectral.py` in same folder as the script
+# sys.path.append(os.path.dirname(__file__))
 
-from spectral import FourierInterpolant as Interpolant
-from spectral import MidpointNormalize, autocorrelation, radial_profile, set_fft_threads
+from spectral.viz import FourierInterpolant as Interpolant
+from spectral.viz import MidpointNormalize, autocorrelation, radial_profile
 
 # my goofy folder naming conventions
 job_pattern = "dx???.????"
 
 parse_dx  = compile("{prefix}x{dx:8f}")
 parse_npz = compile("{prefix}/c_{t:d}.npz")
-
-set_fft_threads()
 
 nthr = pyfftw.config.NUM_THREADS
 if nthr < 1:
