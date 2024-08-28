@@ -167,11 +167,12 @@ def main():
 
         pbar = tqdm(stepper,
                     desc=f"t->{check.end:7,.0f}",
-                    total=int((τ1 - τ0) / dτ))
+                    total=int((τ1 - τ0) / dτ),
+                    ncols=100)
 
         for step in pbar:
             dτ = step.size
-            pbar.total = int((τ1 - τ0) / dτ)
+            pbar.total = pbar.n + int((τ1 - τ) / dτ)
             pbar.refresh()
 
             evolve_ch.evolve(dτ)
@@ -185,9 +186,6 @@ def main():
             energies.append(
                 [stopwatch(startTime), t, dτ, free_energy(c, evolve_ch.dx, evolve_ch.K)]
             )
-
-            report(ene_file, energies)
-            energies.clear()
 
             _ = step.succeeded(value=τ)
 

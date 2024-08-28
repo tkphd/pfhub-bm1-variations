@@ -75,25 +75,24 @@ class CahnHilliardEvolver:
 
     def fbulk(self):
         # bulk free energy density
-        return 0.25 * (1 - self.y**2) ** 2
+        return 0.25 * np.float_power(1 - np.float_power(self.y, 2), 2)
 
     def dfdc(self):
         # derivative of bulk free energy density
         # cf. TK_R6_p551
-        return self.y**3 - self.y
+        return np.float_power(self.y, 3) - self.y
 
     def dfdc_nln(self):
         # nonlinear terms
-        return self.y**3
+        return np.float_power(self.y, 3)
 
     def free_energy(self):
         fcx = FFTW.irfftn(self.ŷ * 1j * self.K[0])
         fcy = FFTW.irfftn(self.ŷ * 1j * self.K[1])
 
-        cx = fcx().real
-        cy = fcy().real
+        fgrad = np.float_power(fcx().real, 2) + np.float_power(fcy().real, 2)
 
-        return self.dx**2 * (0.5 * self.γ * (cx**2 + cy**2) + self.fbulk()).sum()
+        return self.dx**2 * (0.5 * self.γ * fgrad + self.fbulk()).sum()
 
     def mass(self):
         return self.dV * np.sum(self.y)
