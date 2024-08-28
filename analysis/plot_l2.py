@@ -38,9 +38,8 @@ job_pattern = "dx???.????"
 parse_dx  = compile("{prefix}x{dx:8f}")
 parse_npz = compile("{prefix}/c_{t:d}.npz")
 
-nthr = pyfftw.config.NUM_THREADS
-if nthr < 1:
-    raise ValueError("Why so few threads? ({nthr})")
+# threaded FFTW shenanigans
+pyfftw.config.NUM_THREADS = float(os.environ["OMP_NUM_THREADS"])
 
 def elapsed(stopwatch):
     """

@@ -8,14 +8,12 @@ import pyfftw.interfaces.numpy_fft as FFT
 
 from .bm1 import M, κ, dfdc, dfdc_lin, dfdc_nln, fbulk
 
+# threaded FFTW shenanigans
+pyfftw.config.NUM_THREADS = int(os.environ["OMP_NUM_THREADS"])
 
 class Evolver:
     def __init__(self, c, c_old, dx):
         pyfftw.config.PLANNER_EFFORT = "FFTW_MEASURE"
-        if "OMP_NUM_THREADS" in os.environ.keys():
-            pyfftw.config.NUM_THREADS = int(os.environ["OMP_NUM_THREADS"])
-        else:
-            pyfftw.config.NUM_THREADS = 1
 
         self.dx = dx
 

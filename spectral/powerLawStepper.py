@@ -43,7 +43,7 @@ class PowerLawStepper(Stepper):
         )
 
         self.prefactor = float(prefactor)
-        self.value = float(start)
+        self._values.append(float(start))
 
     def _adaptStep(self):
         """Calculate next step after success
@@ -53,4 +53,5 @@ class PowerLawStepper(Stepper):
         float
             New step.
         """
-        return self.prefactor * self.value**(2 / 3)
+        time = self._values[-1]
+        return self.prefactor * time**(2 / 3)

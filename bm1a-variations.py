@@ -13,6 +13,7 @@ import glob
 import numpy as np
 import os
 import pandas as pd
+import pyfftw.config
 
 try:
     from rich import print
@@ -21,18 +22,23 @@ except ImportError:
 from steppyngstounes import CheckpointStepper
 import sys
 import time
+from tqdm import tqdm
 
 # import from `spectral/` in same folder as the script
 sys.path.append(os.path.dirname(__file__))
 
 from spectral.bm1 import L, ic
-from spectral.conversions import c2y, y2c, t2τ, τ2t, gamma
+from spectral.conversions import free_energy, gamma, c2y, τ2t, t2τ, y2c
 from spectral.evolver import progression
 from spectral.cahnHilliardEvolver import CahnHilliardEvolver
 from spectral.powerLawStepper import PowerLawStepper
 
-# Start the clock
-startTime = time.time()
+# threaded FFTW shenanigans
+nthr = float(os.environ["OMP_NUM_THREADS"])
+if nthr < 1:
+    raise ValueError("Why so few threads? ({nthr})")
+else:
+    pyfftw.config.NUM_THREADS = nthr
 
 # System parameters & kinetic coefficients
 
@@ -76,7 +82,7 @@ def stopwatch(clock):
 
 
 def start_report():
-    e_head = "runtime,time,free_energy,mass,dt"
+    e_head = "runtime,time,dτ,free_energy"
     with gzip.open(ene_file, "wt") as fh:
         fh.write(f"{e_head}\n")
 
@@ -88,17 +94,19 @@ def report(fname, lines):
             writer.writerows(lines)
 
 
-def write_checkpoint(t, c, c_old, energies, fname):
+def write_checkpoint(t, c, c_old, fname):
     np.savez_compressed(fname, t=t, c=c, c_old=c_old)
-    report(ene_file, energies)
 
 
 def write_and_report(t, c, c_old, energies):
-    write_checkpoint(t, c, c_old, energies, f"{iodir}/c_{t:08.0f}.npz")
+    write_checkpoint(t, c, c_old, f"{iodir}/c_{t:08.0f}.npz")
+    report(ene_file, energies)
 
 
 def main():
-    global dt, startTime
+    # Start the clock
+    startTime = time.time()
+
     t = τ = 0.0
 
     npz_files = sorted(glob.glob(f"{iodir}/c*.npz"))
@@ -145,30 +153,46 @@ def main():
 
     if not resuming:
         energies = [
-            [stopwatch(startTime), t, evolve_ch.free_energy(), evolve_ch.mass()]
+            [stopwatch(startTime), t, t2τ(k0), free_energy(c, evolve_ch.dx, evolve_ch.K)]
         ]
         write_and_report(t, c, c_old, energies)
 
     for check in CheckpointStepper(start=t, stops=progression(int(t)), stop=t_final):
+        τ0 = t2τ(check.begin)
+        τ1 = t2τ(check.end)
+        stepper = PowerLawStepper(start=τ0, stop=τ1)
+
         energies = []
-        for step in PowerLawStepper(start=t2τ(check.begin), stop=t2τ(check.end)):
+        dτ = max(t2τ(k0), 0.001 * τ0**(2/3))
+
+        pbar = tqdm(stepper,
+                    desc=f"t->{check.end:7,.0f}",
+                    total=int((τ1 - τ0) / dτ))
+
+        for step in pbar:
             dτ = step.size
+            pbar.total = int((τ1 - τ0) / dτ)
+            pbar.refresh()
+
             evolve_ch.evolve(dτ)
 
             τ += dτ
             t = τ2t(τ)
 
-            energies.append(
-                [stopwatch(startTime), t, evolve_ch.free_energy(), evolve_ch.mass()]
-            )
-
             c = y2c(evolve_ch.y)
             c_old = y2c(evolve_ch.y_old)
 
-            write_and_report(t, c, c_old, energies)
+            energies.append(
+                [stopwatch(startTime), t, dτ, free_energy(c, evolve_ch.dx, evolve_ch.K)]
+            )
+
+            report(ene_file, energies)
+            energies.clear()
 
             _ = step.succeeded(value=τ)
 
+        write_and_report(t, c, c_old, energies)
+        energies.clear()
         _ = check.succeeded()
 
     print(f"Simulation complete at t={t:,}.\n")

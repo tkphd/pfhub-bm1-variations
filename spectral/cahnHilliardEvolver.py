@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 
 import numpy as np
+import os
 import pyfftw
 import pyfftw.builders as FFTW
 import pyfftw.interfaces.numpy_fft as FFT
 
+# threaded FFTW shenanigans
+pyfftw.config.NUM_THREADS = int(os.environ["OMP_NUM_THREADS"])
 
 class CahnHilliardEvolver:
     def __init__(self, y, y_old, dx, γ):
@@ -29,7 +32,7 @@ class CahnHilliardEvolver:
         ky = 2 * np.pi * FFT.rfftfreq(sy[1], d=self.dx)
         k = np.array(np.meshgrid(kx, ky, indexing="ij"))
 
-        # improved syaling in k-space, thanks to Nana Ofori-Opoku
+        # improved scaling in k-space, thanks to Nana Ofori-Opoku
         Kx = np.array(0.5 * (1 - np.cos(k[0])) * (3 + np.cos(k[1])))
         Ky = np.array(0.5 * (1 - np.cos(k[1])) * (3 + np.cos(k[0])))
         self.K = np.array([Kx, Ky])
