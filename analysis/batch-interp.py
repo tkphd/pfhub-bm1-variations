@@ -15,12 +15,12 @@ import glob
 import numpy as np
 import os
 from parse import compile
-# import sys
+import sys
 from tqdm.contrib.concurrent import process_map
 import zipfile
 
-# # import from `spectral.py` in same folder as the script
-# sys.path.append(os.path.dirname(__file__))
+# import from `spectral.py` in same folder as the script
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from spectral.viz import FourierInterpolant, radial_profile
 

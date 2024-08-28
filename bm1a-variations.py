@@ -19,14 +19,17 @@ try:
 except ImportError:
     pass
 from steppyngstounes import CheckpointStepper
-from .spectral.powerLawStepper import PowerLawStepper
 import sys
 import time
 
-from .spectral.bm1 import L, ic
-from .spectral.conversions import c2y, y2c, t2τ, τ2t, gamma
-from .spectral.evolver import progression
-from .spectral.cahnHilliardEvolver import CahnHilliardEvolver
+# import from `spectral/` in same folder as the script
+sys.path.append(os.path.dirname(__file__))
+
+from spectral.bm1 import L, ic
+from spectral.conversions import c2y, y2c, t2τ, τ2t, gamma
+from spectral.evolver import progression
+from spectral.cahnHilliardEvolver import CahnHilliardEvolver
+from spectral.powerLawStepper import PowerLawStepper
 
 # Start the clock
 startTime = time.time()
@@ -90,8 +93,8 @@ def write_checkpoint(t, c, c_old, energies, fname):
     report(ene_file, energies)
 
 
-def write_and_report(t, evolver, energies):
-    write_checkpoint(t, evolver, energies, f"{iodir}/c_{t:08.0f}.npz")
+def write_and_report(t, c, c_old, energies):
+    write_checkpoint(t, c, c_old, energies, f"{iodir}/c_{t:08.0f}.npz")
 
 
 def main():
@@ -164,7 +167,7 @@ def main():
 
             write_and_report(t, c, c_old, energies)
 
-            _ = step.succeeded(τ)
+            _ = step.succeeded(value=τ)
 
         _ = check.succeeded()
 

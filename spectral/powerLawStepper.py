@@ -29,7 +29,7 @@ class PowerLawStepper(Stepper):
         Whether to include an evaluation at `start` (default False)
     """
 
-    __doc__ += Stepper._stepper_test(StepperClass="PowerLawStepper")
+    __doc__ += Stepper._stepper_test(StepperClass="PowerLawStepper", steps=296, attempts=377)
 
     def __init__(self, start, stop, prefactor=0.001, minStep=2**-20, inclusive=False):
         super(PowerLawStepper, self).__init__(
@@ -43,7 +43,7 @@ class PowerLawStepper(Stepper):
         )
 
         self.prefactor = float(prefactor)
-        self.time = float(start)
+        self.value = float(start)
 
     def _adaptStep(self):
         """Calculate next step after success
@@ -53,21 +53,4 @@ class PowerLawStepper(Stepper):
         float
             New step.
         """
-        return self.prefactor * self.time**(2 / 3)
-
-    def succeeded(self, value):
-        """Test if step was successful.
-
-        Parameters
-        ----------
-        value : float, required
-            Current time of the simulation.
-
-        Returns
-        -------
-        bool
-            Whether step was successful.  If `error` is not required,
-            returns `True`.
-        """
-        self.time = value
-        return self.stepper.succeeded(step=self)
+        return self.prefactor * self.value**(2 / 3)

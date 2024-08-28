@@ -26,8 +26,8 @@ except ImportError:
 import sys
 from zipfile import BadZipFile
 
-# # import from `spectral.py` in same folder as the script
-# sys.path.append(os.path.dirname(__file__))
+# import from `spectral.py` in same folder as the script
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from spectral.viz import FourierInterpolant as Interpolant
 from spectral.viz import MidpointNormalize, autocorrelation, radial_profile

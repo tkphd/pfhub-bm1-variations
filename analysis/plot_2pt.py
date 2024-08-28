@@ -21,6 +21,7 @@ import pandas as pd
 import pyfftw.builders as FFTW
 
 import os
+import sys
 from parse import compile
 import time
 try:
@@ -31,7 +32,7 @@ import zipfile
 import zlib
 
 # import from `spectral.py` in same folder as the script
-# sys.path.append(os.path.dirname(__file__))
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from spectral.viz import FourierInterpolant, L, log_hn, radial_profile
 
