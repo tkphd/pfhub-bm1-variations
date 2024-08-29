@@ -21,20 +21,20 @@ import pandas as pd
 import pyfftw.builders as FFTW
 
 import os
+import sys
 from parse import compile
 import time
 try:
     from rich import print
 except ImportError:
     pass
-import sys
 import zipfile
 import zlib
 
 # import from `spectral.py` in same folder as the script
-sys.path.append(os.path.dirname(__file__))
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from spectral import FourierInterpolant, L, log_hn, radial_profile, set_fft_threads
+from spectral.viz import FourierInterpolant, L, log_hn, radial_profile
 
 parse_dx  = compile("{prefix}x{dx:8f}")
 parse_npz = compile("{prefix}/c_{t:8d}.npz")
@@ -155,8 +155,6 @@ def dataviz(c_npz, job_h, t, png):
         plt.close(fig)
 
 variant = os.path.basename(os.getcwd())
-
-set_fft_threads()
 
 # reset color cycle for 50 lines
 plt.rcParams["axes.prop_cycle"] = plt.cycler(

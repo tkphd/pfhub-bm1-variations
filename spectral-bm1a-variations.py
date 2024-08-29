@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 # coding: utf-8
 
-# # PFHub BM 1a in FiPy with Steppyngstounes
-#
-# This notebook implements variations on PFHub Benchmark 1a (Spinodal
-# Decomposition) using PyCahnHilliard and steppyngstounes.
-# The goal is to explore alternative initial conditions that are periodic near
-# the boundaries but otherwise match the specification.
+# This notebook implements variations on PFHub Benchmark 1a
+# (Spinodal Decomposition) using pyfftw and steppyngstounes.
+# The goal is to explore initial conditions that are periodic
+# near the boundaries but otherwise match the specification.
 
 from argparse import ArgumentParser
 import csv
@@ -15,6 +13,7 @@ import glob
 import numpy as np
 import os
 import pandas as pd
+
 try:
     from rich import print
 except ImportError:
@@ -23,8 +22,9 @@ from steppyngstounes import CheckpointStepper, PIDStepper
 import sys
 import time
 
-sys.path.append(os.path.dirname(__file__))
-from spectral import Evolver, M, κ, progression
+from .spectral.bm1 import L, M, ε, κ, ζ
+from .spectral.evolver import progression
+from .spectral.cahnHilliardEvolver import CahnHilliardEvolver as Evolver
 
 # Start the clock
 startTime = time.time()
@@ -32,30 +32,22 @@ startTime = time.time()
 # System parameters & kinetic coefficients
 
 t_final = 2_000_000
-L = 200.
-π = np.pi
 
 h0 = 2**-4   # 0.0625
 k0 = 2**-20  # 9.5367431640625e-07
-
-res_tol = 1e-7  # sweep: tolerance for residual
-con_tol = 0.01  # sweep: composition convergence
-max_its = 1000  # maximum sweeps to achieve tolerance
 
 # Read command-line flags
 
 parser = ArgumentParser()
 
-parser.add_argument("variant", help="variant type",
-                    choices=["noise", "original", "periodic", "window", "."])
-parser.add_argument("-x", "--dx",
-                    type=float,
-                    default=h0,
-                    help=f"mesh resolution: gold standard Δx={h0}")
-# parser.add_argument("-t", "--dt",
-#                     type=float,
-#                     default=k0,
-#                     help=f"time resolution: gold standard Δt={k0}")
+parser.add_argument(
+    "variant",
+    help="variant type",
+    choices=["noise", "original", "periodic", "window", "."],
+)
+parser.add_argument(
+    "-x", "--dx", type=float, default=h0, help=f"mesh resolution: gold standard Δx={h0}"
+)
 
 args = parser.parse_args()
 dx = args.dx
@@ -84,7 +76,7 @@ def stopwatch(clock):
 
 
 def start_report():
-    e_head = "runtime,time,free_energy,mass,dt,its,res,l2c"
+    e_head = "runtime,time,free_energy,mass,dt"
     with gzip.open(ene_file, "wt") as fh:
         fh.write(f"{e_head}\n")
 
@@ -97,10 +89,7 @@ def report(fname, lines):
 
 
 def write_checkpoint(t, evolver, energies, fname):
-    np.savez_compressed(fname,
-                        t=t,
-                        c=evolver.c,
-                        c_old=evolver.c_old)
+    np.savez_compressed(fname, t=t, c=evolver.c, c_old=evolver.c_old)
 
     report(ene_file, energies)
 
@@ -114,26 +103,27 @@ def write_and_report(t, evolver, energies):
 
 # === generate the initial condition ===
 
-ζ = 0.5    # mean composition
-ϵ = 0.01   # noise amplitude
-
 N = np.rint(L / dx).astype(int)
 if N % 2 != 0:
     raise ValueError(f"N must be an even integer! Got {N} from {L}/{dx}")
 
-x = np.linspace(0., L - dx, N)
+x = np.linspace(0.0, L - dx, N)
 X, Y = np.meshgrid(x, x, indexing="xy")
+
 
 # not-random microstructure
 def ripples(x, y, A, B):
-    return np.cos(A[0] * x) * np.cos(B[0] * y) \
-         +(np.cos(A[1] * x) * np.cos(B[1] * y)) ** 2 \
-         + np.cos(A[2] * x - B[2] * y) \
-         * np.cos(A[3] * x - B[3] * y)
+    return (
+        np.cos(A[0] * x) * np.cos(B[0] * y)
+        + (np.cos(A[1] * x) * np.cos(B[1] * y)) ** 2
+        + np.cos(A[2] * x - B[2] * y) * np.cos(A[3] * x - B[3] * y)
+    )
+
 
 # window function
 def hann(x):
-    return np.sin(π * x / L)**2  # Hann window
+    return np.sin(np.pi * x / L) ** 2  # Hann window
+
 
 def ic(x, y):
     # published cosine coefficients
@@ -141,10 +131,8 @@ def ic(x, y):
     B0 = np.array([0.110, 0.087, 0.150, 0.020])
 
     # periodic cosine coefficients
-    Ap = π / L * np.array([6.0, 8.0, 2.0, 4.0])
-    Bp = π / L * np.array([8.0, 6.0, 10., 2.0])
-
-    coeff = ϵ
+    Ap = np.pi / L * np.array([6.0, 8.0, 2.0, 4.0])
+    Bp = np.pi / L * np.array([8.0, 6.0, 10.0, 2.0])
 
     if variant == "noise":
         prng = np.random.default_rng()  # PCG64
@@ -154,12 +142,11 @@ def ic(x, y):
     elif variant == "periodic":
         values = ripples(x, y, Ap, Bp)
     elif variant == "window":
-        coeff = ϵ * hann(x) * hann(y)
-        values = ripples(x, y, A0, B0)
+        values = hann(x) * hann(y) * ripples(x, y, A0, B0)
     else:
         raise ValueError(f"Unknown variant: {variant}")
 
-    return ζ + coeff * values
+    return ζ + ϵ * values
 
 
 def main():
@@ -199,35 +186,28 @@ def main():
     # === prepare to evolve ===
 
     if not resuming:
-        energies = [[stopwatch(startTime), t, evolve_ch.free_energy(), evolve_ch.mass(), dt, max_its, res_tol, con_tol]]
+        energies = [
+            [stopwatch(startTime), t, evolve_ch.free_energy(), evolve_ch.mass(), dt]
+        ]
         write_and_report(t, evolve_ch, energies)
 
-
-    for check in CheckpointStepper(start=t,
-                                   stops=progression(int(t)),
-                                   stop=t_final):
+    for check in CheckpointStepper(start=t, stops=progression(int(t)), stop=t_final):
         energies = []
 
-        for step in PIDStepper(start=check.begin,
-                               stop=check.end,
-                               size=dt,
-                               limiting=False,
-                               proportional=0.080,
-                               integral=0.175,
-                               derivative=0.005):
+        for step in PIDStepper(
+            start=check.begin,
+            stop=check.end,
+            size=dt,
+            limiting=False,
+            proportional=0.080,
+            integral=0.175,
+            derivative=0.005,
+        ):
             dt = step.size
-            sweeps, residual, convergence = evolve_ch.evolve(dt, max_its, res_tol, con_tol)
-
-            # weight the number of sweeps as well as the convergence
-            con_err = convergence / con_tol
-            swp_err = max(1.0, float(sweeps) / 9)
-            rel_err = np.sqrt(con_err * swp_err)
-
-            if not step.succeeded(error=rel_err):
-                raise(ValueError(f"Could not converge with dt={dt}."))
+            nrg = evolve_ch.evolve(dt)
 
             t += dt
-            energies.append([stopwatch(startTime), t, evolve_ch.free_energy(), evolve_ch.mass(), dt, sweeps, residual, convergence])
+            energies.append([stopwatch(startTime), t, nrg, evolve_ch.mass(), dt])
 
         dt = step.want
 
@@ -236,6 +216,7 @@ def main():
         _ = check.succeeded()
 
     print(f"Simulation complete at t={t:,}.\n")
+
 
 if __name__ == "__main__":
     main()
