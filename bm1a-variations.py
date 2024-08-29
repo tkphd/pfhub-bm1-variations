@@ -27,24 +27,18 @@ from tqdm import tqdm
 # import from `spectral/` in same folder as the script
 sys.path.append(os.path.dirname(__file__))
 
-from spectral.bm1 import L, ic
-from spectral.conversions import free_energy, gamma, c2y, τ2t, t2τ, y2c
-from spectral.evolver import progression
-from spectral.cahnHilliardEvolver import CahnHilliardEvolver
+from spectral.bm1 import L, ic, free_energy, mass, progression
+from spectral.cahnHilliardEvolver import CahnHilliardEvolver, gamma, c2y, τ2t, t2τ, y2c
 from spectral.powerLawStepper import PowerLawStepper
 
 # threaded FFTW shenanigans
-nthr = float(os.environ["OMP_NUM_THREADS"])
-if nthr < 1:
-    raise ValueError("Why so few threads? ({nthr})")
-else:
-    pyfftw.config.NUM_THREADS = nthr
+pyfftw.config.NUM_THREADS = int(os.environ["OMP_NUM_THREADS"])
 
 # System parameters & kinetic coefficients
 
 t_final = 2_000_000
 
-h0 = 2**-4  # 0.0625
+h0 = 2**-4   # 0.0625
 k0 = 2**-20  # 9.5367431640625e-07
 
 # Read command-line flags
@@ -62,6 +56,7 @@ parser.add_argument(
 
 args = parser.parse_args()
 dx = args.dx
+dV = dx**2
 
 if args.variant == ".":
     variant = os.path.basename(os.path.realpath("."))
@@ -160,10 +155,11 @@ def main():
     for check in CheckpointStepper(start=t, stops=progression(int(t)), stop=t_final):
         τ0 = t2τ(check.begin)
         τ1 = t2τ(check.end)
-        stepper = PowerLawStepper(start=τ0, stop=τ1)
+        m0 = mass(c, dV)
+        stepper = PowerLawStepper(start=τ0, stop=τ1, prefactor=0.001)
 
         energies = []
-        dτ = max(t2τ(k0), 0.001 * τ0**(2/3))
+        dτ = max(t2τ(k0), stepper.powerlaw(τ0))
 
         pbar = tqdm(stepper,
                     desc=f"t->{check.end:7,.0f}",
@@ -172,9 +168,6 @@ def main():
 
         for step in pbar:
             dτ = step.size
-            pbar.total = pbar.n + int((τ1 - τ) / dτ)
-            pbar.refresh()
-
             evolve_ch.evolve(dτ)
 
             τ += dτ
@@ -187,10 +180,22 @@ def main():
                 [stopwatch(startTime), t, dτ, free_energy(c, evolve_ch.dx, evolve_ch.K)]
             )
 
+            report(ene_file, energies)
+            energies.clear()
+
+            m1 = mass(c, dV)
+
+            if not np.isclose(m0, m1):
+                raise RuntimeError(f"FAILED to conserve mass: {m0} -> {m1}")
+
+            pbar.total = pbar.n + int((τ1 - τ) / np.sqrt(stepper.powerlaw(τ1) * stepper.powerlaw(τ)))
+            pbar.refresh()
+
             _ = step.succeeded(value=τ)
 
         write_and_report(t, c, c_old, energies)
         energies.clear()
+
         _ = check.succeeded()
 
     print(f"Simulation complete at t={t:,}.\n")

@@ -31,7 +31,7 @@ class PowerLawStepper(Stepper):
 
     __doc__ += Stepper._stepper_test(StepperClass="PowerLawStepper", steps=296, attempts=377)
 
-    def __init__(self, start, stop, prefactor=0.001, minStep=2**-20, inclusive=False):
+    def __init__(self, start, stop, prefactor=0.001, minStep=1e-12, inclusive=False):
         super(PowerLawStepper, self).__init__(
             start=start,
             stop=stop,
@@ -43,7 +43,11 @@ class PowerLawStepper(Stepper):
         )
 
         self.prefactor = float(prefactor)
+        self.exponent = float(2/3)
         self._values.append(float(start))
+
+    def powerlaw(self, t):
+        return self.prefactor * t**self.exponent
 
     def _adaptStep(self):
         """Calculate next step after success
@@ -53,5 +57,4 @@ class PowerLawStepper(Stepper):
         float
             New step.
         """
-        time = self._values[-1]
-        return self.prefactor * time**(2 / 3)
+        return self.powerlaw(self._values[-1])

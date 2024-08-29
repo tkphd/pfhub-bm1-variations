@@ -7,8 +7,6 @@ import pyfftw
 import pyfftw.builders as FFTW
 import pyfftw.interfaces.numpy_fft as FFT
 
-from .bm1 import M, α, β, κ, ρ, fbulk
-
 # threaded FFTW shenanigans
 pyfftw.config.NUM_THREADS = int(os.environ["OMP_NUM_THREADS"])
 
@@ -19,44 +17,6 @@ def autocorrelation(data):
     inv = FFT.fftshift(FFT.irfftn(fft * np.conjugate(fft)))
     cor = inv.real / (np.var(signal) * signal.size)
     return cor
-
-def c2y(c):
-    # Convert composition field to order parameter
-    return (2 * c - α - β) / (β - α)
-
-
-def y2c(y):
-    # Convert order parameter field to composition
-    return 0.5 * (β - α) * (1 + y) + α
-
-
-def gamma():
-    # Compute gradient energy coefficient
-    return κ / (ρ * (β - α) ** 2)
-
-
-def t2τ(t):
-    # Nondimensionalize time
-    return t / (ρ * M * (β - α) ** 2)
-
-
-def τ2t(τ):
-    # Dimensionalize time
-    return (ρ * M * (β - α) ** 2) * τ
-
-
-def free_energy(c, dx, K):
-    fft = FFTW.rfftn(c.copy())
-    ĉ = fft()
-
-    fcx = FFTW.irfftn(ĉ * 1j * K[0])
-    fcy = FFTW.irfftn(ĉ * 1j * K[1])
-
-    cx = fcx().real
-    cy = fcy().real
-
-    return dx**2 * (0.5 * κ * (cx**2 + cy**2) + fbulk(c)).sum()
-
 
 def log_hn(h, n, b=np.log(1000)):
     """
@@ -73,10 +33,8 @@ def log_hn(h, n, b=np.log(1000)):
     """
     return np.exp(b) * h**n
 
-
 def radial_average(data, r, R):
     return data[(R > r - 0.5) & (R < r + 0.5)].mean()
-
 
 def radial_profile(data, center=None):
     """Take the average in concentric rings around the center of a field"""
