@@ -106,6 +106,7 @@ def main():
 
     npz_files = sorted(glob.glob(f"{iodir}/c*.npz"))
     resuming = (len(npz_files) != 0) and os.path.exists(ene_file)
+    cluster_job = bool("SLURM_PROCID" in os.environ)
 
     if not resuming:
         # === generate initial condition ===
@@ -145,7 +146,7 @@ def main():
     y_old = c2y(c_old)
     γ = gamma()
 
-    evolve_ch = CahnHilliardEvolver(y, y_old, dx, γ, a1=3, a2=0.125)
+    evolve_ch = CahnHilliardEvolver(y, y_old, dx, γ)
     ch_F = free_energy(c, evolve_ch.dx, evolve_ch.K)
     ch_f = evolve_ch.energy_density()
 
@@ -184,8 +185,9 @@ def main():
                 [stopwatch(startTime), t, dτ, ch_F, ch_f]
             )
 
-            report(ene_file, energies)
-            energies.clear()
+            if not cluster_job:
+                report(ene_file, energies)
+                energies.clear()
 
             m1 = mass(c, dV)
 

@@ -124,7 +124,7 @@ between the field variables. Using the four known domain boundaries
 ($α$ and $β$ for $c$, -1 and 1 for $φ$), linear interpolation yields:
 
 $$
-c(φ) = \frac{β - α}{2}(1 + φ)
+c(φ) = α + \frac{β - α}{2}(1 + φ)
 $$
 
 Similarly, assume a linear temporal scaling between "composition" time $t$ and
@@ -161,7 +161,7 @@ $$
 \widehat{φ_{\mathrm{new}}} = \frac{\left[1 + \Delta τk^{2}\left(a_{1} - a_{2}k^{2}γ\right)\right] \widehat{φ_{\mathrm{old}}} - \Delta τk^{2} \widehat{φ_{\mathrm{old}}^{3}}}{1 - \Delta τk^{2} \left[1 - a_{1} + (1 - a_{2})k^{2}γ \right]}
 $$
 
-$a_{1}$ and $a_{2}$ controls the stability and degree of implicitness.
+$a_{1}$ and $a_{2}$ control the stability and degree of implicitness.
 In this model, $a_{1} > 1$ and $a_{2} < \frac{1}{2}$ are unconditionally
 stable; the paper recommends $a_{1} = 3$ and $a_{2} = 0$.
 
