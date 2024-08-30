@@ -32,20 +32,18 @@ def t2τ(t):
     return (ρ * M * (β - α) ** 2) * t
 
 class CahnHilliardEvolver:
-    def __init__(self, y, y_old, dx, γ):
+    def __init__(self, y, y_old, dx, γ, a1=3, a2=0):
         sy = list(y.shape)
         sk = list(sy)
         sk[-1] = 1 + sk[-1] // 2
 
         self.dx = dx
         self.dV = dx ** len(sy)
-        self.V = self.dV * np.prod(sy)
+        self.V = float(self.dV * np.prod(sy))
 
-        self.A = 0.001
-        self.B = 0.286
         self.γ = γ
-        self.a1 = 3
-        self.a2 = 0.2
+        self.a1 = a1
+        self.a2 = a2
         self.a1c = 1 - self.a1
         self.a2c = 1 - self.a2
 
@@ -93,7 +91,7 @@ class CahnHilliardEvolver:
 
     def fbulk(self):
         # bulk free energy density
-        return 0.25 * (1 - self.y**2)**2
+        return 0.25 * (self.y**2 - 1)**2
 
     def dfdc(self):
         # derivative of bulk free energy density
@@ -112,6 +110,9 @@ class CahnHilliardEvolver:
         fgrad = np.float_power(fcx().real, 2) + np.float_power(fcy().real, 2)
 
         return self.dx**2 * (0.5 * self.γ * fgrad + self.fbulk()).sum()
+
+    def energy_density(self):
+        return self._free_energy() / self.V
 
     def _mass(self):
         # "mass" of φ

@@ -13,7 +13,7 @@ class PowerLawStepper(Stepper):
 
     .. math::
 
-       \Delta = A t^{2/3}
+       \Delta = A (B \mathcal{f}^{-3})^{2/3} = A B^{2/3} / \mathcal{f}^2
 
     Parameters
     ----------
@@ -21,6 +21,8 @@ class PowerLawStepper(Stepper):
         Beginning of range to step over.
     stop : float
         Finish of range to step over.
+    f0 : float
+        Initial energy density.
     prefactor : float
         Pre-exponential coefficient.
     minStep : float
@@ -31,7 +33,7 @@ class PowerLawStepper(Stepper):
 
     __doc__ += Stepper._stepper_test(StepperClass="PowerLawStepper", steps=296, attempts=377)
 
-    def __init__(self, start, stop, prefactor=0.001, minStep=1e-12, inclusive=False):
+    def __init__(self, start, stop, f0, prefactor=0.001, minStep=1e-12, inclusive=False):
         super(PowerLawStepper, self).__init__(
             start=start,
             stop=stop,
@@ -42,12 +44,12 @@ class PowerLawStepper(Stepper):
             limiting=False,
         )
 
-        self.prefactor = float(prefactor)
-        self.exponent = float(2/3)
-        self._values.append(float(start))
+        self.A = float(prefactor)
+        self.B23 = 0.484
+        self._values.append(float(f0))
 
-    def powerlaw(self, t):
-        return self.prefactor * t**self.exponent
+    def powerlaw(self, x):
+        return self.A * self.B23 / (x**2)
 
     def _adaptStep(self):
         """Calculate next step after success

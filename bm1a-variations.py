@@ -77,7 +77,7 @@ def stopwatch(clock):
 
 
 def start_report():
-    e_head = "runtime,time,dτ,free_energy"
+    e_head = "runtime,time,dτ,free_energy,energy_density"
     with gzip.open(ene_file, "wt") as fh:
         fh.write(f"{e_head}\n")
 
@@ -140,26 +140,27 @@ def main():
         sys.exit()
 
     # === prepare to evolve ===
+    m0 = mass(c, dV)
     y = c2y(c)
     y_old = c2y(c_old)
     γ = gamma()
 
-    evolve_ch = CahnHilliardEvolver(y, y_old, dx, γ)
+    evolve_ch = CahnHilliardEvolver(y, y_old, dx, γ, a1=3, a2=0.125)
+    ch_F = free_energy(c, evolve_ch.dx, evolve_ch.K)
+    ch_f = evolve_ch.energy_density()
 
     if not resuming:
-        energies = [
-            [stopwatch(startTime), t, t2τ(k0), free_energy(c, evolve_ch.dx, evolve_ch.K)]
-        ]
+        energies = [[stopwatch(startTime), t, t2τ(k0), ch_F, ch_f]]
         write_and_report(t, c, c_old, energies)
 
     for check in CheckpointStepper(start=t, stops=progression(int(t)), stop=t_final):
         τ0 = t2τ(check.begin)
         τ1 = t2τ(check.end)
-        m0 = mass(c, dV)
-        stepper = PowerLawStepper(start=τ0, stop=τ1, prefactor=0.001)
+
+        stepper = PowerLawStepper(start=τ0, stop=τ1, f0=ch_f, prefactor=0.001)
 
         energies = []
-        dτ = max(t2τ(k0), stepper.powerlaw(τ0))
+        dτ = stepper.powerlaw(ch_f)
 
         pbar = tqdm(stepper,
                     desc=f"t->{check.end:7,.0f}",
@@ -176,8 +177,11 @@ def main():
             c = y2c(evolve_ch.y)
             c_old = y2c(evolve_ch.y_old)
 
+            ch_F = free_energy(c, evolve_ch.dx, evolve_ch.K)
+            ch_f = evolve_ch.energy_density()
+
             energies.append(
-                [stopwatch(startTime), t, dτ, free_energy(c, evolve_ch.dx, evolve_ch.K)]
+                [stopwatch(startTime), t, dτ, ch_F, ch_f]
             )
 
             report(ene_file, energies)
@@ -188,10 +192,10 @@ def main():
             if not np.isclose(m0, m1):
                 raise RuntimeError(f"FAILED to conserve mass: {m0} -> {m1}")
 
-            pbar.total = pbar.n + int((τ1 - τ) / np.sqrt(stepper.powerlaw(τ1) * stepper.powerlaw(τ)))
+            pbar.total = pbar.n + int((τ1 - τ) / dτ)  # a poor-but-improving estimate
             pbar.refresh()
 
-            _ = step.succeeded(value=τ)
+            _ = step.succeeded(value=ch_f)
 
         write_and_report(t, c, c_old, energies)
         energies.clear()
