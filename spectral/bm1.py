@@ -28,16 +28,24 @@ def fbulk(c):
 
 
 def free_energy(c, dx, K):
+    sc = list(c.shape)
+    sk = list(c.shape)
+    sk[-1] //= 2
+
     χ = c.copy()
-    ĉ = pyfftw.zeros_aligned(χ.shape, dtype=complex)
+    ĉ = pyfftw.zeros_aligned(sk, dtype=complex)
 
     fft = FFTW.rfftn(χ)
     ĉ = fft()
 
-    fcx = FFTW.irfftn(ĉ * 1j * K[0])
-    fcy = FFTW.irfftn(ĉ * 1j * K[1])
+    ĉx = ĉ * 1j * K[0]
+    ĉy = ĉ * 1j * K[1]
 
-    fgrad = fcx().real**2 + fcy().real**2
+    fcx = FFTW.irfftn(ĉx.copy())
+    fcy = FFTW.irfftn(ĉy.copy())
+
+    fgrad = pyfftw.zeros_aligned(sc)
+    fgrad[:] = fcx().real**2 + fcy().real**2
 
     return dx**2 * (0.5 * κ * fgrad + fbulk(c)).sum()
 

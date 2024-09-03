@@ -146,7 +146,7 @@ def main():
     y_old = c2y(c_old)
     γ = gamma()
 
-    evolve_ch = CahnHilliardEvolver(y, y_old, dx, γ, a1=3, a2=0.1)
+    evolve_ch = CahnHilliardEvolver(y, y_old, dx, γ, a1=3, a2=0)
     ch_F = free_energy(c, evolve_ch.dx, evolve_ch.K)
     ch_f = evolve_ch.energy_density()
 
@@ -158,7 +158,7 @@ def main():
         τ0 = t2τ(check.begin)
         τ1 = t2τ(check.end)
 
-        stepper = PowerLawStepper(start=τ0, stop=τ1, f0=ch_f, A=0.000625/dx, B=0.286)
+        stepper = PowerLawStepper(start=τ0, stop=τ1, f0=ch_f, A=0.0005, B=0.286)
 
         energies = []
         dτ = stepper.powerlaw(ch_f)
