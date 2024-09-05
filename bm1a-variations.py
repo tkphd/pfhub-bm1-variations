@@ -36,7 +36,7 @@ pyfftw.config.NUM_THREADS = int(os.environ["OMP_NUM_THREADS"])
 
 # System parameters & kinetic coefficients
 
-t_final = 2_000_000
+t_final = 10_000
 
 h0 = 2**-4   # 0.0625
 k0 = 2**-20  # 9.5367431640625e-07
@@ -73,7 +73,7 @@ print("Saving output to", iodir)
 
 
 def stopwatch(clock):
-    return np.round(time.time() - clock, 2)
+    return np.round(time.time() - clock, 4)
 
 
 def start_report():
@@ -146,7 +146,7 @@ def main():
     y_old = c2y(c_old)
     γ = gamma()
 
-    evolve_ch = CahnHilliardEvolver(y, y_old, dx, γ, a1=3, a2=0)
+    evolve_ch = CahnHilliardEvolver(y, y_old, dx, γ, a1=2.875, a2=0.375)
     ch_F = free_energy(c, evolve_ch.dx, evolve_ch.K)
     ch_f = evolve_ch.energy_density()
 
@@ -158,7 +158,7 @@ def main():
         τ0 = t2τ(check.begin)
         τ1 = t2τ(check.end)
 
-        stepper = PowerLawStepper(start=τ0, stop=τ1, f0=ch_f, A=0.0005, B=0.286)
+        stepper = PowerLawStepper(start=τ0, stop=τ1, f0=ch_f, A=0.001, B=0.286)
 
         energies = []
         dτ = stepper.powerlaw(ch_f)
@@ -185,22 +185,21 @@ def main():
                 [stopwatch(startTime), t, dτ, ch_F, ch_f]
             )
 
+            report(ene_file, energies)
+            energies.clear()
+
             if not cluster_job:
-                report(ene_file, energies)
-                energies.clear()
-
-            m1 = mass(c, dV)
-
-            if not np.isclose(m0, m1):
-                raise RuntimeError(f"FAILED to conserve mass: {m0} -> {m1}")
-
-            pbar.total = pbar.n + int((τ1 - τ) / dτ)  # a poor-but-improving estimate
-            pbar.refresh()
+                pbar.total = pbar.n + int((τ1 - τ) / dτ)  # a poor-but-improving estimate
+                pbar.refresh()
 
             _ = step.succeeded(value=ch_f)
 
         write_and_report(t, c, c_old, energies)
         energies.clear()
+
+        m1 = mass(c, dV)
+        if not np.isclose(m0, m1):
+            raise RuntimeError(f"FAILED to conserve mass: {m0} -> {m1}")
 
         _ = check.succeeded()
 

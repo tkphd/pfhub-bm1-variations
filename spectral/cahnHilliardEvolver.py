@@ -104,10 +104,14 @@ class CahnHilliardEvolver:
 
     def _free_energy(self):
         # free energy of φ
-        fcx = FFTW.irfftn(self.ŷ * 1j * self.K[0])
-        fcy = FFTW.irfftn(self.ŷ * 1j * self.K[1])
+        ŷx = self.ŷ * 1j * self.K[0]
+        ŷy = self.ŷ * 1j * self.K[1]
 
-        fgrad = np.float_power(fcx().real, 2) + np.float_power(fcy().real, 2)
+        fx = FFTW.irfftn(ŷx.copy())
+        fy = FFTW.irfftn(ŷy.copy())
+
+        fgrad = pyfftw.zeros_aligned(list(self.y.shape))
+        fgrad[:] = fx().real**2 + fy().real**2
 
         return self.dx**2 * (0.5 * self.γ * fgrad + self.fbulk()).sum()
 

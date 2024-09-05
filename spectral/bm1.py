@@ -9,7 +9,7 @@ M = 5.0  # diffusivity
 
 α = 0.3  # eqm composition of phase A
 β = 0.7  # eqm composition of phase B
-ρ = 5.0  # well height
+ρ = 12.5  # well height
 κ = 2.0  # gradient energy coeff
 
 ζ = 0.5  # mean composition
